@@ -11,11 +11,6 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <Spinner
-            android:id="@+id/mode_spinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
-
         <EditText
             android:id="@+id/password_input"
             android:layout_width="match_parent"
@@ -28,19 +23,19 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Select File" />
-        
+
         <TextView
             android:id="@+id/selected_file_textview"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="No file selected"
             android:padding="8dp"/>
-
+            
         <Button
-            android:id="@+id/encrypt_button"
+            android:id="@+id/decrypt_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Encrypt" />
+            android:text="Decrypt" />
 
         <ProgressBar
             android:id="@+id/progress_bar"
@@ -60,7 +55,7 @@
             <TextView
                 android:id="@+id/console_textview"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content" 
+                android:layout_height="wrap_content"
                 android:padding="8dp"
                 android:fontFamily="monospace"/>
         </ScrollView>

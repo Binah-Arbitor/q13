@@ -11,18 +11,53 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <Spinner
+            android:id="@+id/decryption_mode_spinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
         <EditText
             android:id="@+id/password_input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="textPassword"
-            android:hint="Password" />
+            android:hint="Password / Passphrase" />
+
+        <Button
+            android:id="@+id/private_key_select_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select Private Key" 
+            android:visibility="gone"/>
+            
+        <TextView
+            android:id="@+id/private_key_textview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No private key selected"
+            android:padding="8dp"
+            android:visibility="gone"/>
+
+        <Button
+            android:id="@+id/signer_public_key_select_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select Signer's Public Key (Optional)" 
+            android:visibility="gone"/>
+
+        <TextView
+            android:id="@+id/signer_public_key_textview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No signer key selected"
+            android:padding="8dp"
+            android:visibility="gone"/>
 
         <Button
             android:id="@+id/file_select_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Select File" />
+            android:text="Select File to Decrypt" />
 
         <TextView
             android:id="@+id/selected_file_textview"
@@ -42,7 +77,7 @@
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"/>
+            android.layout_marginTop="8dp"/>
 
         <ScrollView
             android:id="@+id/console_scrollview"

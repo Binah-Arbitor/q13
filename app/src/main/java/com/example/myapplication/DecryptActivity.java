@@ -3,7 +3,6 @@ package com.example.myapplication;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.FileUtils;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.AdapterView;
@@ -43,7 +42,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     private Uri selectedFileUri, privateKeyUri, signerPublicKeyUri;
     private CryptoManager cryptoManager;
 
-    private enum DecryptionMode { AES, PGP }
+    private enum DecryptionMode { AES, PGP } // Keep for UI logic
     private DecryptionMode currentMode = DecryptionMode.AES;
 
     @Override
@@ -81,37 +80,29 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
             }
             String password = passwordInput.getText().toString();
 
-            onLog("Decryption process started...");
+            if (currentMode == DecryptionMode.PGP) {
+                onLog("PGP decryption is not yet implemented.");
+                Toast.makeText(this, "Not Implemented Yet", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Default to AES Decryption
+            if (password.isEmpty()) {
+                onError("Password is required for AES decryption.");
+                return;
+            }
+            
+            onLog("AES Decryption process started...");
             progressBar.setProgress(0);
 
             new Thread(() -> {
                 try {
                     File inputFile = createTempFileFromUri(selectedFileUri, "inputFile");
-                    String outputFileName = "decrypted_" + getFileName(selectedFileUri).replace(".pgp", "");
+                    String outputFileName = "decrypted_" + getFileName(selectedFileUri);
                     File outputFile = new File(getCacheDir(), outputFileName);
-
-                    if (currentMode == DecryptionMode.AES) {
-                        if (password.isEmpty()) {
-                            runOnUiThread(()-> onError("Password is required for AES decryption."));
-                            return;
-                        }
-                        cryptoManager.decrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
-                    } else { // PGP
-                        if (privateKeyUri == null || password.isEmpty()) {
-                             runOnUiThread(()-> onError("Private key and passphrase are required for PGP decryption."));
-                            return;
-                        }
-                        File privateKeyFile = createTempFileFromUri(privateKeyUri, "privateKey");
-                        File signerPublicKeyFile = signerPublicKeyUri != null ? createTempFileFromUri(signerPublicKeyUri, "signerKey") : null;
-
-                        cryptoManager.decryptPGP(
-                            privateKeyFile.getAbsolutePath(),
-                            password,
-                            inputFile.getAbsolutePath(),
-                            outputFile.getAbsolutePath(),
-                            signerPublicKeyFile != null ? signerPublicKeyFile.getAbsolutePath() : null
-                        );
-                    }
+                    
+                    cryptoManager.decrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                    
                     onLog("Decrypted file saved at: " + outputFile.getAbsolutePath());
 
                 } catch (Exception e) {
@@ -125,8 +116,10 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         File tempFile = File.createTempFile(prefix, "_" + getFileName(uri), getCacheDir());
         try (InputStream is = getContentResolver().openInputStream(uri);
              OutputStream os = new FileOutputStream(tempFile)) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                FileUtils.copy(is, os);
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while((bytesRead = is.read(buffer)) != -1) {
+                os.write(buffer, 0, bytesRead);
             }
         }
         return tempFile;
@@ -181,7 +174,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                 startActivity(new Intent(this, AdvancedEncryptionActivity.class));
                 return true;
             } else if (itemId == R.id.nav_decrypt) {
-                return true; // Already here
+                return true; 
             }
             return false;
         });

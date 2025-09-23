@@ -1,6 +1,6 @@
 package com.example.myapplication.crypto;
 
-import org.spongycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;

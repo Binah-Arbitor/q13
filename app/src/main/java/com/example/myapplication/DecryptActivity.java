@@ -95,7 +95,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
             
             onLog("AES Decryption process started in " + selectedThreadingMode + " mode...");
             progressBar.setProgress(0);
-            progressBar.setMax(10000); // For floating point progress
+            progressBar.setMax(100);
 
             new Thread(() -> {
                 try {
@@ -104,9 +104,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                     File outputFile = new File(getCacheDir(), outputFileName);
                     
                     if ("Performance (Pipeline)".equals(selectedThreadingMode)) {
-                        // cryptoManager.decryptMultithreaded(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
-                        onLog("Pipeline mode is not yet implemented. Please wait."); // Placeholder
-                        onError("Not implemented yet.");
+                        cryptoManager.decryptMultithreaded(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
                     } else {
                         cryptoManager.decrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
                     }
@@ -249,9 +247,11 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         return result;
     }
 
-    @Override
+   @Override
     public void onProgress(float progress) {
-        runOnUiThread(() -> progressBar.setProgress((int) (progress * 100)));
+        runOnUiThread(() -> {
+            progressBar.setProgress((int) progress);
+        });
     }
 
     @Override

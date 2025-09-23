@@ -6,6 +6,7 @@
     android:layout_height="match_parent"
     tools:context=".SimpleDecryptionActivity">
 
+    <!-- Main content -->
     <Button
         android:id="@+id/select_file_button"
         android:layout_width="wrap_content"
@@ -64,6 +65,18 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="16dp" />
 
+    <Button
+        android:id="@+id/decrypt_button"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Decrypt"
+        app:layout_constraintBottom_toTopOf="@id/navigation_bar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginStart="32dp"
+        android:layout_marginEnd="32dp"
+        android:layout_marginBottom="16dp"/>
+
     <ImageButton
         android:id="@+id/settings_button"
         android:layout_width="wrap_content"
@@ -73,5 +86,32 @@
         app:layout_constraintEnd_toEndOf="parent"
         android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"/>
+
+    <!-- Bottom Navigation Bar -->
+    <LinearLayout
+        android:id="@+id/navigation_bar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#f0f0f0"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <Button
+            android:id="@+id/nav_encrypt_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Encrypt" />
+
+        <Button
+            android:id="@+id/nav_decrypt_button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Decrypt" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

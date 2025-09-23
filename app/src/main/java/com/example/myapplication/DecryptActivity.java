@@ -30,7 +30,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     private static final int PRIVATE_KEY_SELECT_CODE = 5;
     private static final int SIGNER_PUBLIC_KEY_SELECT_CODE = 6;
 
-    private Spinner decryptionModeSpinner;
+    private Spinner threadingModeSpinner, decryptionModeSpinner;
     private EditText passwordInput;
     private Button fileSelectButton, decryptButton, privateKeySelectButton, signerPublicKeySelectButton;
     private TextView selectedFileTextView, privateKeyTextView, signerPublicKeyTextView;
@@ -42,8 +42,9 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     private Uri selectedFileUri, privateKeyUri, signerPublicKeyUri;
     private CryptoManager cryptoManager;
 
-    private enum DecryptionMode { AES, PGP } // Keep for UI logic
+    private enum DecryptionMode { AES, PGP } 
     private DecryptionMode currentMode = DecryptionMode.AES;
+    private String selectedThreadingMode = "Efficiency (Single-Thread)";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +53,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
 
         cryptoManager = new CryptoManager(this);
 
+        threadingModeSpinner = findViewById(R.id.threading_mode_spinner);
         decryptionModeSpinner = findViewById(R.id.decryption_mode_spinner);
         passwordInput = findViewById(R.id.password_input);
         fileSelectButton = findViewById(R.id.file_select_button);
@@ -66,7 +68,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         consoleTextView = findViewById(R.id.console_textview);
         bottomNav = findViewById(R.id.bottom_nav);
 
-        setupSpinner();
+        setupSpinners();
         setupBottomNav();
 
         fileSelectButton.setOnClickListener(v -> selectFile(FILE_SELECT_CODE, "Select File to Decrypt"));
@@ -86,14 +88,14 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                 return;
             }
 
-            // Default to AES Decryption
             if (password.isEmpty()) {
                 onError("Password is required for AES decryption.");
                 return;
             }
             
-            onLog("AES Decryption process started...");
+            onLog("AES Decryption process started in " + selectedThreadingMode + " mode...");
             progressBar.setProgress(0);
+            progressBar.setMax(10000); // For floating point progress
 
             new Thread(() -> {
                 try {
@@ -101,7 +103,13 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                     String outputFileName = "decrypted_" + getFileName(selectedFileUri);
                     File outputFile = new File(getCacheDir(), outputFileName);
                     
-                    cryptoManager.decrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                    if ("Performance (Pipeline)".equals(selectedThreadingMode)) {
+                        // cryptoManager.decryptMultithreaded(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                        onLog("Pipeline mode is not yet implemented. Please wait."); // Placeholder
+                        onError("Not implemented yet.");
+                    } else {
+                        cryptoManager.decrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                    }
                     
                     onLog("Decrypted file saved at: " + outputFile.getAbsolutePath());
 
@@ -116,7 +124,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         File tempFile = File.createTempFile(prefix, "_" + getFileName(uri), getCacheDir());
         try (InputStream is = getContentResolver().openInputStream(uri);
              OutputStream os = new FileOutputStream(tempFile)) {
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[8192];
             int bytesRead;
             while((bytesRead = is.read(buffer)) != -1) {
                 os.write(buffer, 0, bytesRead);
@@ -125,7 +133,21 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         return tempFile;
     }
 
-    private void setupSpinner() {
+    private void setupSpinners() {
+        // Threading Mode Spinner
+        String[] threadingModes = {"Efficiency (Single-Thread)", "Performance (Pipeline)"};
+        ArrayAdapter<String> threadingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, threadingModes);
+        threadingModeSpinner.setAdapter(threadingAdapter);
+        threadingModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedThreadingMode = (String) parent.getItemAtPosition(position);
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        // Decryption Algorithm Spinner
         String[] modes = {"Simple AES", "PGP"};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes);
         decryptionModeSpinner.setAdapter(adapter);
@@ -214,6 +236,8 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                     }
                 }
             }
+        } else if (uri.getScheme().equals("file")) {
+            result = new File(uri.getPath()).getName();
         }
         if (result == null) {
             result = uri.getPath();
@@ -226,8 +250,8 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     }
 
     @Override
-    public void onProgress(int progress) {
-        runOnUiThread(() -> progressBar.setProgress(progress));
+    public void onProgress(float progress) {
+        runOnUiThread(() -> progressBar.setProgress((int) (progress * 100)));
     }
 
     @Override

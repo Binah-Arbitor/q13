@@ -5,8 +5,8 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.FileUtils;
 import android.provider.OpenableColumns;
-import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -15,7 +15,6 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.myapplication.crypto.CryptoListener;
@@ -40,6 +39,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
     private Uri selectedFileUri;
     private CryptoManager cryptoManager;
+    private String selectedMode = "Efficiency (Single-Thread)";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,45 +82,58 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                 return;
             }
 
-            onLog("Encryption process started...");
+            onLog("Encryption process started in " + selectedMode + " mode...");
             progressBar.setProgress(0);
-            
-            // Run encryption in a background thread to avoid blocking the UI.
+            progressBar.setMax(100);
+
             new Thread(() -> {
                 try {
-                    // Copy the selected file to a temporary location to work with it
-                    File inputFile = new File(getCacheDir(), getFileName(selectedFileUri));
+                    File inputFile = new File(getCacheDir(), "tmp_" + getFileName(selectedFileUri));
                     try (InputStream is = getContentResolver().openInputStream(selectedFileUri);
                          OutputStream os = new FileOutputStream(inputFile)) {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                            FileUtils.copy(is, os);
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        while ((bytesRead = is.read(buffer)) != -1) {
+                            os.write(buffer, 0, bytesRead);
                         }
                     }
                     
                     File outputFile = new File(getCacheDir(), "encrypted_" + inputFile.getName());
 
-                    cryptoManager.encrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                    if ("Performance (Pipeline)".equals(selectedMode)) {
+                        cryptoManager.encryptMultithreaded(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                    } else {
+                        cryptoManager.encrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
+                    }
                     
-                    onLog("Encrypted file saved at: " + outputFile.getAbsolutePath());
+                    onLog("Output file location: " + outputFile.getAbsolutePath());
 
                 } catch (Exception e) {
-                    onError("Encryption failed: " + e.getMessage());
+                    onError("Operation failed: " + e.getMessage());
                 }
             }).start();
         });
     }
 
     private void setupSpinner() {
-        String[] modes = {"Simple AES"};
+        String[] modes = {"Efficiency (Single-Thread)", "Performance (Pipeline)"};
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes);
         modeSpinner.setAdapter(adapter);
+        modeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedMode = (String) parent.getItemAtPosition(position);
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
+        });
     }
 
     private void setupBottomNav() {
+        bottomNav.setSelectedItemId(R.id.nav_simple_encrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
              int itemId = item.getItemId();
             if (itemId == R.id.nav_simple_encrypt) {
-                // Already here
                 return true;
             } else if (itemId == R.id.nav_advanced_encrypt) {
                 startActivity(new Intent(this, AdvancedEncryptionActivity.class));
@@ -144,7 +157,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
     }
 
-    // Helper method to get file name from Uri
     private String getFileName(Uri uri) {
         String result = null;
         if (uri.getScheme().equals("content")) {
@@ -156,6 +168,8 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                     }
                 }
             }
+        } else if (uri.getScheme().equals("file")) {
+            result = new File(uri.getPath()).getName();
         }
         if (result == null) {
             result = uri.getPath();
@@ -168,8 +182,13 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     }
 
     @Override
-    public void onProgress(int progress) {
-        runOnUiThread(() -> progressBar.setProgress(progress));
+    public void onProgress(float progress) {
+        runOnUiThread(() -> {
+            // Scale progress to 0-100 for the ProgressBar
+            progressBar.setProgress((int) progress);
+             // Also update a text view to show decimal progress if you want
+            // For example: progressTextView.setText(String.format("%.2f%%", progress));
+        });
     }
 
     @Override
@@ -177,7 +196,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         runOnUiThread(() -> {
             consoleTextView.append("\n[SUCCESS] " + result + "\n");
             scrollToBottom();
-            Toast.makeText(this, "Encryption Successful", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show();
         });
     }
 

@@ -6,7 +6,7 @@
   # Use https://search.nixos.org/packages to find packages
   packages = [
     pkgs.zulu17
-    pkgs.maven
+    pkgs.pkg
   ];
   # Sets environment variables in the workspace
   env = {};

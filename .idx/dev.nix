@@ -7,6 +7,7 @@
   packages = [
     pkgs.zulu17
     pkgs.pkg
+    pkgs.gradle
   ];
   # Sets environment variables in the workspace
   env = {};

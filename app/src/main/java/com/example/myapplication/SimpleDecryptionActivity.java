@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -15,6 +16,8 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -27,10 +30,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class SimpleDecryptionActivity extends AppCompatActivity implements CryptoListener {
-
-    private static final int FILE_SELECT_CODE = 1;
-    private static final int PRIVATE_KEY_SELECT_CODE = 5;
-    private static final int SIGNER_PUBLIC_KEY_SELECT_CODE = 6;
 
     private Spinner decryptionModeSpinner, threadModeSpinner;
     private EditText passwordInput;
@@ -45,6 +44,10 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     private Uri selectedFileUri, privateKeyUri, signerPublicKeyUri;
     private CryptoManager cryptoManager;
 
+    private ActivityResultLauncher<Intent> fileToDecryptPickerLauncher;
+    private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
+    private ActivityResultLauncher<Intent> signerPublicKeyFilePickerLauncher;
+
     private enum DecryptionMode { SIMPLE_AES, PGP }
     private DecryptionMode currentMode = DecryptionMode.SIMPLE_AES;
     private String currentThreadMode = "Efficiency (Single-Thread)";
@@ -55,6 +58,11 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         setContentView(R.layout.activity_simple_decryption);
 
         cryptoManager = new CryptoManager(this);
+
+        // Initialize launchers
+        fileToDecryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
+        privateKeyFilePickerLauncher = createAndRegisterLauncher(privateKeyTextView, "Private Key: ", uri -> privateKeyUri = uri);
+        signerPublicKeyFilePickerLauncher = createAndRegisterLauncher(signerPublicKeyTextView, "Signer Key: ", uri -> signerPublicKeyUri = uri);
 
         decryptionModeSpinner = findViewById(R.id.decryption_mode_spinner);
         threadModeSpinner = findViewById(R.id.thread_mode_spinner);
@@ -76,13 +84,41 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         setupSpinners();
         setupBottomNav();
 
-        fileSelectButton.setOnClickListener(v -> selectFile(FILE_SELECT_CODE, "Select File to Decrypt"));
-        privateKeySelectButton.setOnClickListener(v -> selectFile(PRIVATE_KEY_SELECT_CODE, "Select Private Key"));
-        signerPublicKeySelectButton.setOnClickListener(v -> selectFile(SIGNER_PUBLIC_KEY_SELECT_CODE, "Select Signer Public Key"));
+        fileSelectButton.setOnClickListener(v -> launchFilePicker(fileToDecryptPickerLauncher, "Select File to Decrypt"));
+        privateKeySelectButton.setOnClickListener(v -> launchFilePicker(privateKeyFilePickerLauncher, "Select Private Key"));
+        signerPublicKeySelectButton.setOnClickListener(v -> launchFilePicker(signerPublicKeyFilePickerLauncher, "Select Signer Public Key"));
 
         decryptButton.setOnClickListener(v -> handleDecryption());
         
         updateUiForMode(currentMode);
+    }
+
+    private ActivityResultLauncher<Intent> createAndRegisterLauncher(TextView textView, String prefix, UriConsumer uriConsumer) {
+        return registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Uri uri = result.getData().getData();
+                    if (uri != null) {
+                        uriConsumer.accept(uri);
+                        String fileName = getFileName(uri);
+                        textView.setText(prefix + fileName);
+                    }
+                }
+            }
+        );
+    }
+
+    private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        launcher.launch(Intent.createChooser(intent, title));
+    }
+
+    @FunctionalInterface
+    interface UriConsumer {
+        void accept(Uri uri);
     }
 
     private void handleDecryption() {
@@ -200,13 +236,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         });
     }
 
-    private void selectFile(int requestCode, String title) {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        startActivityForResult(Intent.createChooser(intent, title), requestCode);
-    }
-
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_simple_decrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
@@ -225,33 +254,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             }
             return false;
         });
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode == RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            String fileName = getFileName(uri);
-            if (fileName == null) {
-                onError("Could not retrieve file name.");
-                return;
-            }
-            switch (requestCode) {
-                case FILE_SELECT_CODE:
-                    selectedFileUri = uri;
-                    selectedFileTextView.setText("File: " + fileName);
-                    break;
-                case PRIVATE_KEY_SELECT_CODE:
-                    privateKeyUri = uri;
-                    privateKeyTextView.setText("Private Key: " + fileName);
-                    break;
-                case SIGNER_PUBLIC_KEY_SELECT_CODE:
-                    signerPublicKeyUri = uri;
-                    signerPublicKeyTextView.setText("Signer Key: " + fileName);
-                    break;
-            }
-        }
     }
 
     private String getFileName(Uri uri) {

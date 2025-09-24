@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -14,6 +15,8 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
@@ -27,7 +30,6 @@ import java.io.OutputStream;
 
 public class SimpleEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
-    private static final int FILE_SELECT_CODE = 0;
     private Spinner modeSpinner;
     private EditText passwordInput;
     private Button fileSelectButton, encryptButton;
@@ -41,12 +43,27 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private CryptoManager cryptoManager;
     private String selectedMode = "Efficiency (Single-Thread)";
 
+    private ActivityResultLauncher<Intent> filePickerLauncher;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_simple_encryption);
 
         cryptoManager = new CryptoManager(this);
+
+        // Initialize the ActivityResultLauncher
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    selectedFileUri = result.getData().getData();
+                    String fileName = getFileName(selectedFileUri);
+                    selectedFileTextView.setText("Selected file: " + fileName);
+                    onLog("File selected: " + fileName);
+                }
+            }
+        );
 
         modeSpinner = findViewById(R.id.mode_spinner);
         passwordInput = findViewById(R.id.password_input);
@@ -66,10 +83,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.setType("*/*");
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            startActivityForResult(
-                Intent.createChooser(intent, "Select a file to encrypt"),
-                FILE_SELECT_CODE
-            );
+            filePickerLauncher.launch(Intent.createChooser(intent, "Select a file to encrypt"));
         });
 
         encryptButton.setOnClickListener(v -> handleEncryption());
@@ -167,17 +181,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             }
             return false;
         });
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == FILE_SELECT_CODE && resultCode == RESULT_OK && data != null) {
-            selectedFileUri = data.getData();
-            String fileName = getFileName(selectedFileUri);
-            selectedFileTextView.setText("Selected file: " + fileName);
-            onLog("File selected: " + fileName);
-        }
     }
 
     private String getFileName(Uri uri) {

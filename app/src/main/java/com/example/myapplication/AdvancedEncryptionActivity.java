@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -12,6 +13,8 @@ import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.myapplication.crypto.CryptoListener;
@@ -23,10 +26,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
-
-    private static final int PUBLIC_KEY_SELECT_CODE = 2;
-    private static final int PRIVATE_KEY_SELECT_CODE = 3;
-    private static final int FILE_SELECT_CODE = 4;
 
     private Button publicKeySelectButton, privateKeySelectButton, fileSelectButton, encryptButton;
     private TextView publicKeyTextView, privateKeyTextView, selectedFileTextView;
@@ -40,12 +39,21 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     private Uri publicKeyUri, privateKeyUri, selectedFileUri;
     private CryptoManager cryptoManager;
 
+    private ActivityResultLauncher<Intent> publicKeyFilePickerLauncher;
+    private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
+    private ActivityResultLauncher<Intent> fileToEncryptPickerLauncher;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_encryption);
 
         cryptoManager = new CryptoManager();
+
+        // Initialize launchers
+        publicKeyFilePickerLauncher = createAndRegisterLauncher(publicKeyTextView, "Public Key: ", uri -> publicKeyUri = uri);
+        privateKeyFilePickerLauncher = createAndRegisterLauncher(privateKeyTextView, "Private Key: ", uri -> privateKeyUri = uri);
+        fileToEncryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
 
         publicKeySelectButton = findViewById(R.id.public_key_select_button);
         privateKeySelectButton = findViewById(R.id.private_key_select_button);
@@ -63,11 +71,39 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
         setupBottomNav();
 
-        publicKeySelectButton.setOnClickListener(v -> selectFile(PUBLIC_KEY_SELECT_CODE, "Select Public Key"));
-        privateKeySelectButton.setOnClickListener(v -> selectFile(PRIVATE_KEY_SELECT_CODE, "Select Private Key"));
-        fileSelectButton.setOnClickListener(v -> selectFile(FILE_SELECT_CODE, "Select File to Encrypt"));
+        publicKeySelectButton.setOnClickListener(v -> launchFilePicker(publicKeyFilePickerLauncher, "Select Public Key"));
+        privateKeySelectButton.setOnClickListener(v -> launchFilePicker(privateKeyFilePickerLauncher, "Select Private Key"));
+        fileSelectButton.setOnClickListener(v -> launchFilePicker(fileToEncryptPickerLauncher, "Select File to Encrypt"));
 
         encryptButton.setOnClickListener(v -> handleEncryption());
+    }
+
+    private ActivityResultLauncher<Intent> createAndRegisterLauncher(TextView textView, String prefix, UriConsumer uriConsumer) {
+        return registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Uri uri = result.getData().getData();
+                    if (uri != null) {
+                        uriConsumer.accept(uri);
+                        String fileName = getFileName(uri);
+                        textView.setText(prefix + fileName);
+                    }
+                }
+            }
+        );
+    }
+
+    private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        launcher.launch(Intent.createChooser(intent, title));
+    }
+
+    @FunctionalInterface
+    interface UriConsumer {
+        void accept(Uri uri);
     }
 
     private void handleEncryption() {
@@ -128,14 +164,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }).start();
     }
 
-
-    private void selectFile(int requestCode, String title) {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        startActivityForResult(Intent.createChooser(intent, title), requestCode);
-    }
-
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
@@ -154,29 +182,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             }
             return false;
         });
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode == RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            String fileName = getFileName(uri);
-            switch (requestCode) {
-                case PUBLIC_KEY_SELECT_CODE:
-                    publicKeyUri = uri;
-                    publicKeyTextView.setText("Public Key: " + fileName);
-                    break;
-                case PRIVATE_KEY_SELECT_CODE:
-                    privateKeyUri = uri;
-                    privateKeyTextView.setText("Private Key: " + fileName);
-                    break;
-                case FILE_SELECT_CODE:
-                    selectedFileUri = uri;
-                    selectedFileTextView.setText("File: " + fileName);
-                    break;
-            }
-        }
     }
 
     private String getFileName(Uri uri) {

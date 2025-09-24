@@ -10,7 +10,7 @@
         android:title="Advanced Encrypt" />
     <item
         android:id="@+id/nav_simple_decrypt"
-        android:icon="@android:drawable/ic_menu_unlock"
+        android:icon="@android:drawable/ic_menu_revert"
         android:title="Simple Decrypt" />
     <item
         android:id="@+id/nav_advanced_decrypt"

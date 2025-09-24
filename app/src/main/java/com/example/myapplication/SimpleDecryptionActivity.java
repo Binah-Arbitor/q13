@@ -308,7 +308,8 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             statusTextView.setText("✗ ERROR");
             statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red));
             consoleTextView.append("\n[ERROR] " + errorMessage + "\n");
-            scrollToBottom();n            Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show();
+            scrollToBottom();
+            Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show();
         });
     }
 

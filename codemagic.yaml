@@ -1,0 +1,33 @@
+# codemagic.yaml
+# This file configures the CI/CD pipeline for Codemagic.
+# For more information, see the Codemagic documentation: https://docs.codemagic.io/yaml-basic-configuration/
+
+workflows:
+  android-build:
+    name: Android Build Workflow
+    # Specify the machine type. linux_x2 is a standard Linux machine.
+    instance_type: linux_x2
+
+    # Define the build environment.
+    environment:
+      # Specify the Android SDK version, matching your compileSdk.
+      android: 34
+      # Specify the Java version. This project uses Java 17.
+      java: 17
+      # If you have secrets (like API keys), define them in Codemagic UI 
+      # and reference the group here.
+      # groups:
+      #   - my_secrets 
+
+    # The sequence of scripts to run for the build.
+    scripts:
+      - name: Grant executable permission to gradlew
+        script: |
+          chmod +x ./gradlew
+      - name: Build debug APK
+        script: |
+          ./gradlew assembleDebug
+
+    # Define the build artifacts to be collected after the build.
+    artifacts:
+      - app/build/outputs/apk/debug/app-debug.apk

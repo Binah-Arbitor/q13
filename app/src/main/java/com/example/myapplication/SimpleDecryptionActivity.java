@@ -266,10 +266,10 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
                          result = cursor.getString(nameIndex);
                     }
                 }
+            } catch (Exception e) {
+                onLog("Error getting file name: " + e.getMessage());
+                return null;
             }
-        } catch (Exception e) {
-            onLog("Error getting file name: " + e.getMessage());
-            return null;
         }
         if (result == null) {
             result = uri.getPath();
@@ -308,8 +308,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             statusTextView.setText("✗ ERROR");
             statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red));
             consoleTextView.append("\n[ERROR] " + errorMessage + "\n");
-            scrollToBottom();
-            Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show();
+            scrollToBottom();n            Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show();
         });
     }
 

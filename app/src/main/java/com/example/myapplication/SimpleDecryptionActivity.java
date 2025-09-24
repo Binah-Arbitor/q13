@@ -208,7 +208,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     }
 
     private void setupBottomNav() {
-        bottomNav.setSelectedItemId(R.id.nav_decrypt);
+        bottomNav.setSelectedItemId(R.id.nav_simple_decrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_simple_encrypt) {
@@ -217,7 +217,10 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             } else if (itemId == R.id.nav_advanced_encrypt) {
                 startActivity(new Intent(this, AdvancedEncryptionActivity.class));
                 return true;
-            } else if (itemId == R.id.nav_decrypt) {
+            } else if (itemId == R.id.nav_simple_decrypt) {
+                return true;
+            } else if (itemId == R.id.nav_advanced_decrypt) {
+                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
                 return true;
             }
             return false;

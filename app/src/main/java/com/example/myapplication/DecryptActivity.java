@@ -9,6 +9,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -19,8 +20,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-import java.io.File;
-import java.io.FileOutputStream;
+
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -30,7 +31,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     private static final int PRIVATE_KEY_SELECT_CODE = 5;
     private static final int SIGNER_PUBLIC_KEY_SELECT_CODE = 6;
 
-    private Spinner threadingModeSpinner, decryptionModeSpinner;
+    private Spinner decryptionModeSpinner, threadModeSpinner;
     private EditText passwordInput;
     private Button fileSelectButton, decryptButton, privateKeySelectButton, signerPublicKeySelectButton;
     private TextView selectedFileTextView, privateKeyTextView, signerPublicKeyTextView;
@@ -38,13 +39,14 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     private ScrollView consoleScrollView;
     private TextView consoleTextView;
     private BottomNavigationView bottomNav;
+    private LinearLayout pgpKeySelectionLayout;
 
     private Uri selectedFileUri, privateKeyUri, signerPublicKeyUri;
     private CryptoManager cryptoManager;
 
-    private enum DecryptionMode { AES, PGP } 
-    private DecryptionMode currentMode = DecryptionMode.AES;
-    private String selectedThreadingMode = "Efficiency (Single-Thread)";
+    private enum DecryptionMode { SIMPLE_AES, PGP }
+    private DecryptionMode currentMode = DecryptionMode.SIMPLE_AES;
+    private String currentThreadMode = "Efficiency (Single-Thread)";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,8 +55,9 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
 
         cryptoManager = new CryptoManager(this);
 
-        threadingModeSpinner = findViewById(R.id.threading_mode_spinner);
+        // Initialize all UI components
         decryptionModeSpinner = findViewById(R.id.decryption_mode_spinner);
+        threadModeSpinner = findViewById(R.id.thread_mode_spinner);
         passwordInput = findViewById(R.id.password_input);
         fileSelectButton = findViewById(R.id.file_select_button);
         decryptButton = findViewById(R.id.decrypt_button);
@@ -63,6 +66,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         selectedFileTextView = findViewById(R.id.selected_file_textview);
         privateKeyTextView = findViewById(R.id.private_key_textview);
         signerPublicKeyTextView = findViewById(R.id.signer_public_key_textview);
+        pgpKeySelectionLayout = findViewById(R.id.pgp_key_selection_layout);
         progressBar = findViewById(R.id.progress_bar);
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
@@ -75,85 +79,97 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         privateKeySelectButton.setOnClickListener(v -> selectFile(PRIVATE_KEY_SELECT_CODE, "Select Private Key"));
         signerPublicKeySelectButton.setOnClickListener(v -> selectFile(SIGNER_PUBLIC_KEY_SELECT_CODE, "Select Signer Public Key"));
 
-        decryptButton.setOnClickListener(v -> {
-            if (selectedFileUri == null) {
-                onError("Please select a file first.");
-                return;
-            }
-            String password = passwordInput.getText().toString();
+        decryptButton.setOnClickListener(v -> handleDecryption());
+        
+        updateUiForMode(currentMode); // Set initial UI state
+    }
 
-            if (currentMode == DecryptionMode.PGP) {
-                onLog("PGP decryption is not yet implemented.");
-                Toast.makeText(this, "Not Implemented Yet", Toast.LENGTH_SHORT).show();
-                return;
-            }
+    private void handleDecryption() {
+        if (selectedFileUri == null) {
+            onError("Please select a file to decrypt.");
+            return;
+        }
+        
+        setUiEnabled(false);
 
-            if (password.isEmpty()) {
-                onError("Password is required for AES decryption.");
-                return;
-            }
-            
-            onLog("AES Decryption process started in " + selectedThreadingMode + " mode...");
-            progressBar.setProgress(0);
-            progressBar.setMax(100);
-
-            new Thread(() -> {
-                try {
-                    File inputFile = createTempFileFromUri(selectedFileUri, "inputFile");
-                    String outputFileName = "decrypted_" + getFileName(selectedFileUri);
-                    File outputFile = new File(getCacheDir(), outputFileName);
-                    
-                    if ("Performance (Pipeline)".equals(selectedThreadingMode)) {
-                        cryptoManager.decryptMultithreaded(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
-                    } else {
-                        cryptoManager.decrypt(password, inputFile.getAbsolutePath(), outputFile.getAbsolutePath());
-                    }
-                    
-                    onLog("Decrypted file saved at: " + outputFile.getAbsolutePath());
-
-                } catch (Exception e) {
-                    onError("Decryption failed: " + e.getMessage());
-                }
-            }).start();
-        });
+        switch (currentMode) {
+            case SIMPLE_AES:
+                handleSimpleAesDecryption();
+                break;
+            case PGP:
+                handlePgpDecryption();
+                break;
+        }
     }
     
-    private File createTempFileFromUri(Uri uri, String prefix) throws Exception {
-        File tempFile = File.createTempFile(prefix, "_" + getFileName(uri), getCacheDir());
-        try (InputStream is = getContentResolver().openInputStream(uri);
-             OutputStream os = new FileOutputStream(tempFile)) {
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while((bytesRead = is.read(buffer)) != -1) {
-                os.write(buffer, 0, bytesRead);
-            }
+    private void handleSimpleAesDecryption() {
+        String password = passwordInput.getText().toString();
+        if (password.isEmpty()) {
+            onError("Please enter a password.");
+            setUiEnabled(true);
+            return;
         }
-        return tempFile;
+        
+        final boolean useMultithreading = "Performance (Parallel)".equals(currentThreadMode);
+        String modeLog = useMultithreading ? "Performance (Parallel)" : "Efficiency (Single-Thread)";
+        onLog("Starting Simple AES decryption in " + modeLog + " mode...");
+        
+        new Thread(() -> {
+            try {
+                // 1. Decrypt to an in-memory buffer first to ensure integrity before overwriting.
+                onLog("Verifying and decrypting data to memory buffer...");
+                InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+                cryptoManager.decrypt(password, inputStream, buffer, useMultithreading);
+
+                // 2. If successful, overwrite the original file.
+                onLog("Decryption successful. Overwriting original file...");
+                try (OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt")) {
+                    if (outputStream == null) {
+                        throw new Exception("Failed to open output stream for the file. Check permissions.");
+                    }
+                    buffer.writeTo(outputStream);
+                }
+                onSuccess("File decrypted and overwritten successfully.");
+
+            } catch (Exception e) {
+                onError("Decryption failed: " + e.getMessage());
+            } finally {
+                runOnUiThread(() -> setUiEnabled(true));
+            }
+        }).start();
+    }
+    
+    private void handlePgpDecryption() {
+        // Placeholder for when PGP logic is implemented in CryptoManager
+        onError("PGP decryption is not yet implemented.");
+        runOnUiThread(() -> setUiEnabled(true));
     }
 
     private void setupSpinners() {
-        // Threading Mode Spinner
-        String[] threadingModes = {"Efficiency (Single-Thread)", "Performance (Pipeline)"};
-        ArrayAdapter<String> threadingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, threadingModes);
-        threadingModeSpinner.setAdapter(threadingAdapter);
-        threadingModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        // Decryption Algorithm Spinner
+        String[] modes = {"Simple AES (Password)", "PGP (Keys)"};
+        ArrayAdapter<String> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes);
+        decryptionModeSpinner.setAdapter(modeAdapter);
+        decryptionModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                selectedThreadingMode = (String) parent.getItemAtPosition(position);
+                currentMode = (position == 0) ? DecryptionMode.SIMPLE_AES : DecryptionMode.PGP;
+                updateUiForMode(currentMode);
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        // Decryption Algorithm Spinner
-        String[] modes = {"Simple AES", "PGP"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes);
-        decryptionModeSpinner.setAdapter(adapter);
-        decryptionModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        // Threading Mode Spinner
+        String[] threadModes = {"Efficiency (Single-Thread)", "Performance (Parallel)"};
+        ArrayAdapter<String> threadAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, threadModes);
+        threadModeSpinner.setAdapter(threadAdapter);
+        threadModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                currentMode = position == 0 ? DecryptionMode.AES : DecryptionMode.PGP;
-                updateUiForMode(currentMode);
+                currentThreadMode = (String) parent.getItemAtPosition(position);
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
@@ -161,19 +177,29 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
     }
 
     private void updateUiForMode(DecryptionMode mode) {
-        if (mode == DecryptionMode.AES) {
-            privateKeySelectButton.setVisibility(View.GONE);
-            privateKeyTextView.setVisibility(View.GONE);
-            signerPublicKeySelectButton.setVisibility(View.GONE);
-            signerPublicKeyTextView.setVisibility(View.GONE);
+        if (mode == DecryptionMode.SIMPLE_AES) {
+            passwordInput.setVisibility(View.VISIBLE);
             passwordInput.setHint("Password");
+            pgpKeySelectionLayout.setVisibility(View.GONE);
+            threadModeSpinner.setVisibility(View.VISIBLE);
         } else { // PGP
-            privateKeySelectButton.setVisibility(View.VISIBLE);
-            privateKeyTextView.setVisibility(View.VISIBLE);
-            signerPublicKeySelectButton.setVisibility(View.VISIBLE);
-            signerPublicKeyTextView.setVisibility(View.VISIBLE);
-            passwordInput.setHint("Passphrase");
+            passwordInput.setVisibility(View.VISIBLE); // Still needed for passphrase
+            passwordInput.setHint("Passphrase for Private Key");
+            pgpKeySelectionLayout.setVisibility(View.VISIBLE);
+            threadModeSpinner.setVisibility(View.GONE); // PGP multithreading not implemented yet
         }
+    }
+
+    private void setUiEnabled(boolean enabled) {
+        progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        if(enabled) progressBar.setProgress(0);
+        decryptButton.setEnabled(enabled);
+        fileSelectButton.setEnabled(enabled);
+        decryptionModeSpinner.setEnabled(enabled);
+        threadModeSpinner.setEnabled(enabled);
+        passwordInput.setEnabled(enabled);
+        privateKeySelectButton.setEnabled(enabled);
+        signerPublicKeySelectButton.setEnabled(enabled);
     }
 
     private void selectFile(int requestCode, String title) {
@@ -194,7 +220,7 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                 startActivity(new Intent(this, AdvancedEncryptionActivity.class));
                 return true;
             } else if (itemId == R.id.nav_decrypt) {
-                return true; 
+                return true;
             }
             return false;
         });
@@ -206,6 +232,10 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         if (resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
             String fileName = getFileName(uri);
+            if (fileName == null) {
+                onError("Could not retrieve file name.");
+                return;
+            }
             switch (requestCode) {
                 case FILE_SELECT_CODE:
                     selectedFileUri = uri;
@@ -234,11 +264,10 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
                     }
                 }
             }
-        } else if (uri.getScheme().equals("file")) {
-            result = new File(uri.getPath()).getName();
         }
         if (result == null) {
             result = uri.getPath();
+            if(result == null) return null;
             int cut = result.lastIndexOf('/');
             if (cut != -1) {
                 result = result.substring(cut + 1);
@@ -247,11 +276,9 @@ public class DecryptActivity extends AppCompatActivity implements CryptoListener
         return result;
     }
 
-   @Override
-    public void onProgress(float progress) {
-        runOnUiThread(() -> {
-            progressBar.setProgress((int) progress);
-        });
+    @Override
+    public void onProgress(int progress) {
+        runOnUiThread(() -> progressBar.setProgress(progress));
     }
 
     @Override

@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -14,7 +15,12 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.myapplication.crypto.CryptoListener;
+import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
@@ -32,11 +38,14 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     private BottomNavigationView bottomNav;
 
     private Uri publicKeyUri, privateKeyUri, selectedFileUri;
+    private CryptoManager cryptoManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_encryption);
+
+        cryptoManager = new CryptoManager();
 
         publicKeySelectButton = findViewById(R.id.public_key_select_button);
         privateKeySelectButton = findViewById(R.id.private_key_select_button);
@@ -58,12 +67,67 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         privateKeySelectButton.setOnClickListener(v -> selectFile(PRIVATE_KEY_SELECT_CODE, "Select Private Key"));
         fileSelectButton.setOnClickListener(v -> selectFile(FILE_SELECT_CODE, "Select File to Encrypt"));
 
-        encryptButton.setOnClickListener(v -> {
-            // TODO: Implement advanced encryption logic here in the future
-            onLog("Advanced encryption is not yet implemented.");
-            Toast.makeText(this, "Not Implemented Yet", Toast.LENGTH_SHORT).show();
-        });
+        encryptButton.setOnClickListener(v -> handleEncryption());
     }
+
+    private void handleEncryption() {
+        if (selectedFileUri == null || publicKeyUri == null) {
+            onError("Please select a file and a public key.");
+            return;
+        }
+
+        boolean shouldSign = signCheckBox.isChecked();
+        if (shouldSign && privateKeyUri == null) {
+            onError("Please select a private key for signing.");
+            return;
+        }
+
+        String passphrase = passphraseInput.getText().toString();
+        if (shouldSign && passphrase.isEmpty()) {
+            onError("Please enter a passphrase for the private key.");
+            return;
+        }
+
+        // Show progress bar and clear console
+        progressBar.setVisibility(View.VISIBLE);
+        consoleTextView.setText("");
+        onLog("Starting encryption...");
+
+        new Thread(() -> {
+            try {
+                // 1. Encrypt to a temporary in-memory buffer first
+                onLog("Encrypting data to memory buffer...");
+                InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+                // Determine if we are signing or just encrypting
+                if (shouldSign) {
+                    onLog("Encryption with signing selected.");
+                    cryptoManager.encryptAndSign(this, publicKeyUri, privateKeyUri, passphrase, inputStream, buffer);
+                } else {
+                    onLog("Encryption only selected.");
+                    cryptoManager.encrypt(this, publicKeyUri, inputStream, buffer);
+                }
+
+                // 2. If encryption is successful, write the buffer to the original file
+                onLog("Encryption successful. Writing to destination file...");
+                try (OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt")) {
+                    if (outputStream == null) {
+                        throw new Exception("Failed to open output stream for the file.");
+                    }
+                    buffer.writeTo(outputStream);
+                }
+
+                onSuccess("File encrypted successfully and overwritten.");
+
+            } catch (Exception e) {
+                onError("Encryption failed: " + e.getMessage());
+            } finally {
+                runOnUiThread(() -> progressBar.setVisibility(View.GONE));
+            }
+        }).start();
+    }
+
 
     private void selectFile(int requestCode, String title) {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);

@@ -24,16 +24,28 @@ android {
         }
     }
     compileOptions {
+        // Enable support for Java 8 language features
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        // Enable desugaring for Java 8+ APIs
+        coreLibraryDesugaringEnabled true
     }
 }
 
 dependencies {
 
+    // Core Android libraries
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.9.0'
+
+    // Bouncy Castle for PGP encryption
     implementation 'org.bouncycastle:bcprov-jdk18on:1.77'
+    implementation 'org.bouncycastle:bcpg-jdk18on:1.77'
+
+    // Desugaring library for Java 8+ API support on older Android versions
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+
+    // Testing libraries
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'

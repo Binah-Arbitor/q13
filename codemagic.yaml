@@ -10,14 +10,14 @@ workflows:
 
     # Define the build environment.
     environment:
-      # Specify the Android SDK version, matching your compileSdk.
-      android: 34
       # Specify the Java version. This project uses Java 17.
       java: 17
-      # If you have secrets (like API keys), define them in Codemagic UI 
+      # Codemagic build machines have Android SDKs pre-installed.
+      # Gradle will use the compileSdk version from your build.gradle file.
+      # If you have secrets (like API keys), define them in Codemagic UI
       # and reference the group here.
       # groups:
-      #   - my_secrets 
+      #   - my_secrets
 
     # The sequence of scripts to run for the build.
     scripts:

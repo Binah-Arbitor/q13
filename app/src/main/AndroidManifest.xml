@@ -28,7 +28,7 @@
             android:exported="false" />
 
         <activity
-            android:name=".DecryptActivity"
+            android:name=".SimpleDecryptionActivity"
             android:exported="false" />
 
     </application>

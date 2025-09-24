@@ -1,71 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".SimpleEncryptionActivity">
 
-    <LinearLayout
+    <TextView
+        android:id="@+id/title_textview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Simple Encryption (In-Place)"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="16dp" />
+
+    <Spinner
+        android:id="@+id/mode_spinner"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_above="@+id/bottom_nav"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="wrap_content"
+        android:layout_below="@id/title_textview"
+        android:layout_marginBottom="8dp" />
 
-        <Spinner
-            android:id="@+id/mode_spinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+    <EditText
+        android:id="@+id/password_input"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/mode_spinner"
+        android:hint="Password"
+        android:inputType="textPassword"
+        android:layout_marginBottom="8dp" />
 
-        <EditText
-            android:id="@+id/password_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textPassword"
-            android:hint="Password" />
+    <Button
+        android:id="@+id/file_select_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/password_input"
+        android:text="Select File" />
 
-        <Button
-            android:id="@+id/file_select_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Select File" />
-        
-        <TextView
-            android:id="@+id/selected_file_textview"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="No file selected"
-            android:padding="8dp"/>
+    <TextView
+        android:id="@+id/selected_file_textview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/file_select_button"
+        android:layout_marginTop="8dp"
+        android:text="No file selected" />
 
-        <Button
-            android:id="@+id/encrypt_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Encrypt" />
+    <Button
+        android:id="@+id/encrypt_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/selected_file_textview"
+        android:layout_marginTop="16dp"
+        android:text="Encrypt/Decrypt File" />
+
+    <!-- FrameLayout to hold both ProgressBar and status TextView -->
+    <FrameLayout
+        android:id="@+id/status_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/encrypt_button"
+        android:layout_marginTop="16dp">
 
         <ProgressBar
             android:id="@+id/progress_bar"
             style="?android:attr/progressBarStyleHorizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"/>
+            android:visibility="gone" />
 
-        <ScrollView
-            android:id="@+id/console_scrollview"
+        <TextView
+            android:id="@+id/status_textview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <ScrollView
+        android:id="@+id/console_scrollview"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_below="@id/status_layout"
+        android:layout_above="@id/bottom_nav"
+        android:layout_marginTop="8dp"
+        android:background="#f0f0f0"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/console_textview"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="8dp"
-            android:background="#f0f0f0">
-
-            <TextView
-                android:id="@+id/console_textview"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content" 
-                android:padding="8dp"
-                android:fontFamily="monospace"/>
-        </ScrollView>
-
-    </LinearLayout>
+            android:layout_height="wrap_content"
+            android:text="Console waiting for output..." />
+    </ScrollView>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"

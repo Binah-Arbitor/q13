@@ -1,117 +1,147 @@
-
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:padding="16dp"
     tools:context=".SimpleDecryptionActivity">
 
-    <!-- Main content -->
-    <Button
-        android:id="@+id/select_file_button"
+    <TextView
+        android:id="@+id/title_textview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Select File"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="32dp"/>
+        android:text="Decrypt File"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="16dp" />
 
-    <TextView
-        android:id="@+id/file_name_text_view"
-        android:layout_width="0dp"
+    <Spinner
+        android:id="@+id/decryption_mode_spinner"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="No file selected"
-        android:textAlignment="center"
-        app:layout_constraintTop_toBottomOf="@id/select_file_button"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"/>
+        android:layout_below="@id/title_textview"
+        android:layout_marginBottom="8dp" />
+
+    <Spinner
+        android:id="@+id/thread_mode_spinner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/decryption_mode_spinner"
+        android:layout_marginBottom="8dp" />
 
     <EditText
-        android:id="@+id/password_edit_text"
-        android:layout_width="0dp"
+        android:id="@+id/password_input"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Enter password"
+        android:layout_below="@id/thread_mode_spinner"
+        android:hint="Password"
         android:inputType="textPassword"
-        app:layout_constraintTop_toBottomOf="@id/file_name_text_view"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"/>
+        android:layout_marginBottom="8dp" />
 
-    <ProgressBar
-        android:id="@+id/progress_bar"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="0dp"
+    <Button
+        android:id="@+id/file_select_button"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:layout_constraintTop_toBottomOf="@id/password_edit_text"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"/>
+        android:layout_below="@id/password_input"
+        android:text="Select File to Decrypt" />
 
-    <Switch
-        android:id="@+id/mode_switch"
+    <TextView
+        android:id="@+id/selected_file_textview"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Efficiency / Performance"
-        app:layout_constraintTop_toBottomOf="@+id/progress_bar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        android:layout_below="@id/file_select_button"
+        android:layout_marginTop="8dp"
+        android:text="No file selected" />
+
+    <LinearLayout
+        android:id="@+id/pgp_key_selection_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_below="@id/selected_file_textview"
+        android:visibility="gone" >
+
+        <Button
+            android:id="@+id/private_key_select_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select Private Key" />
+
+        <TextView
+            android:id="@+id/private_key_textview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No private key selected" />
+
+        <Button
+            android:id="@+id/signer_public_key_select_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Select Signer Public Key (Optional)" />
+
+        <TextView
+            android:id="@+id/signer_public_key_textview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="No signer key selected" />
+    </LinearLayout>
 
     <Button
         android:id="@+id/decrypt_button"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Decrypt"
-        app:layout_constraintBottom_toTopOf="@id/navigation_bar"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginStart="32dp"
-        android:layout_marginEnd="32dp"
-        android:layout_marginBottom="16dp"/>
-
-    <ImageButton
-        android:id="@+id/settings_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:src="@android:drawable/ic_menu_manage"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_below="@id/pgp_key_selection_layout"
         android:layout_marginTop="16dp"
-        android:layout_marginEnd="16dp"/>
-
-    <!-- Bottom Navigation Bar -->
-    <LinearLayout
-        android:id="@+id/navigation_bar"
-        android:layout_width="0dp"
+        android:text="Decrypt File" />
+        
+    <FrameLayout
+        android:id="@+id/status_layout"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:layout_below="@+id/decrypt_button"
+        android:layout_marginTop="16dp">
+
+        <ProgressBar
+            android:id="@+id/progress_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/status_textview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <ScrollView
+        android:id="@+id/console_scrollview"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_below="@id/status_layout"
+        android:layout_above="@id/bottom_nav"
+        android:layout_marginTop="8dp"
         android:background="#f0f0f0"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        android:padding="8dp">
 
-        <Button
-            android:id="@+id/nav_encrypt_button"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/console_textview"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Encrypt" />
+            android:text="Console waiting for output..." />
+    </ScrollView>
 
-        <Button
-            android:id="@+id/nav_decrypt_button"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Decrypt" />
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        app:menu="@menu/bottom_nav_menu" />
 
-    </LinearLayout>
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+</RelativeLayout>

@@ -16,6 +16,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
@@ -30,7 +31,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private Spinner modeSpinner;
     private EditText passwordInput;
     private Button fileSelectButton, encryptButton;
-    private TextView selectedFileTextView;
+    private TextView selectedFileTextView, statusTextView;
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private TextView consoleTextView;
@@ -45,7 +46,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_simple_encryption);
 
-        // The listener (`this`) is passed to the manager for progress updates.
         cryptoManager = new CryptoManager(this);
 
         modeSpinner = findViewById(R.id.mode_spinner);
@@ -54,6 +54,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         selectedFileTextView = findViewById(R.id.selected_file_textview);
         encryptButton = findViewById(R.id.encrypt_button);
         progressBar = findViewById(R.id.progress_bar);
+        statusTextView = findViewById(R.id.status_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
         bottomNav = findViewById(R.id.bottom_nav);
@@ -85,58 +86,53 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             return;
         }
 
+        setUiEnabled(false);
         final boolean useMultithreading = "Performance (Pipeline)".equals(selectedMode);
         String modeLog = useMultithreading ? "Performance (Parallel)" : "Efficiency (Single-Thread)";
         onLog("Starting encryption in " + modeLog + " mode...");
 
-        // Disable UI during operation
-        setUiEnabled(false);
-
         new Thread(() -> {
             try {
-                // 1. Get total file size for progress reporting
                 long totalSize;
                 try (android.os.ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
                     totalSize = pfd.getStatSize();
                 }
 
-                // 2. Encrypt to an in-memory buffer first
                 onLog("Encrypting data to memory buffer...");
                 InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
                 ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 
-                // 3. Execute encryption using the manager
-                // The manager will throw an exception on failure, which is caught below.
                 cryptoManager.encrypt(password, inputStream, totalSize, buffer, useMultithreading);
 
-                // 4. If successful, write the buffer to the original file
                 onLog("Encryption successful. Overwriting original file...");
                 try (OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt")) {
-                    if (outputStream == null) {
-                        throw new Exception("Failed to open output stream. Check permissions or file is read-only.");
-                    }
+                    if (outputStream == null) throw new Exception("Failed to open output stream.");
                     buffer.writeTo(outputStream);
                 }
 
                 onSuccess("File encrypted and overwritten successfully.");
 
             } catch (Exception e) {
-                // The CryptoManager or file I/O operations failed.
                 onError("Encryption failed: " + e.getMessage());
-            } finally {
-                // Re-enable UI on the main thread
-                runOnUiThread(() -> setUiEnabled(true));
-            }
+            } 
         }).start();
     }
 
     private void setUiEnabled(boolean enabled) {
-        progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
-        if(enabled) progressBar.setProgress(0);
-        encryptButton.setEnabled(enabled);
-        fileSelectButton.setEnabled(enabled);
-        modeSpinner.setEnabled(enabled);
-        passwordInput.setEnabled(enabled);
+        runOnUiThread(() -> {
+            encryptButton.setEnabled(enabled);
+            fileSelectButton.setEnabled(enabled);
+            modeSpinner.setEnabled(enabled);
+            passwordInput.setEnabled(enabled);
+
+            if (enabled) {
+                progressBar.setVisibility(View.GONE);
+            } else {
+                progressBar.setVisibility(View.VISIBLE);
+                progressBar.setProgress(0);
+                statusTextView.setVisibility(View.GONE);
+            }
+        });
     }
 
     private void setupSpinner() {
@@ -163,7 +159,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                 startActivity(new Intent(this, AdvancedEncryptionActivity.class));
                 return true;
             } else if (itemId == R.id.nav_decrypt) {
-                startActivity(new Intent(this, DecryptActivity.class));
+                startActivity(new Intent(this, SimpleDecryptionActivity.class));
                 return true;
             }
             return false;
@@ -211,6 +207,10 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     @Override
     public void onSuccess(String result) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
+            statusTextView.setVisibility(View.VISIBLE);
+            statusTextView.setText("✓ SUCCESS");
+            statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green));
             consoleTextView.append("\n[SUCCESS] " + result + "\n");
             scrollToBottom();
             Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show();
@@ -220,9 +220,13 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     @Override
     public void onError(String errorMessage) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
+            statusTextView.setVisibility(View.VISIBLE);
+            statusTextView.setText("✗ ERROR");
+            statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red));
             consoleTextView.append("\n[ERROR] " + errorMessage + "\n");
             scrollToBottom();
-             Toast.makeText(this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show();
         });
     }
 

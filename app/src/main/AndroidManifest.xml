@@ -31,6 +31,10 @@
             android:name=".SimpleDecryptionActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".AdvancedDecryptionActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>

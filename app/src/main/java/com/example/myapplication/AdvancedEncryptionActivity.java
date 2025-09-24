@@ -145,8 +145,11 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 return true;
             } else if (itemId == R.id.nav_advanced_encrypt) {
                 return true;
-            } else if (itemId == R.id.nav_decrypt) {
+            } else if (itemId == R.id.nav_simple_decrypt) {
                 startActivity(new Intent(this, SimpleDecryptionActivity.class));
+                return true;
+            } else if (itemId == R.id.nav_advanced_decrypt) {
+                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
                 return true;
             }
             return false;

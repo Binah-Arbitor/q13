@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:id="@+id/nav_simple"
+        android:id="@+id/nav_simple_encrypt"
         android:icon="@android:drawable/ic_menu_edit"
-        android:title="Simple" />
+        android:title="Simple Encrypt" />
     <item
-        android:id="@+id/nav_advanced"
+        android:id="@+id/nav_advanced_encrypt"
         android:icon="@android:drawable/ic_menu_manage"
-        android:title="Advanced" />
+        android:title="Advanced Encrypt" />
     <item
-        android:id="@+id/nav_decrypt"
+        android:id="@+id/nav_simple_decrypt"
         android:icon="@android:drawable/ic_menu_unlock"
-        android:title="Decrypt" />
+        android:title="Simple Decrypt" />
+    <item
+        android:id="@+id/nav_advanced_decrypt"
+        android:icon="@android:drawable/ic_menu_save"
+        android:title="Advanced Decrypt" />
 </menu>

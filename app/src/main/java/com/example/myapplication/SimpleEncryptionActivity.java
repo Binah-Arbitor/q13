@@ -158,8 +158,11 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             } else if (itemId == R.id.nav_advanced_encrypt) {
                 startActivity(new Intent(this, AdvancedEncryptionActivity.class));
                 return true;
-            } else if (itemId == R.id.nav_decrypt) {
+            } else if (itemId == R.id.nav_simple_decrypt) {
                 startActivity(new Intent(this, SimpleDecryptionActivity.class));
+                return true;
+            } else if (itemId == R.id.nav_advanced_decrypt) {
+                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
                 return true;
             }
             return false;

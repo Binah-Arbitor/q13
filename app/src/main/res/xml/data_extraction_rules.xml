@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- TODO: Add rules for what to include in cloud backups. All files are backed up by default. -->
+        <!-- <include domain="sharedpref" path="."/> -->
+        <!-- <exclude domain="sharedpref" path="device.xml"/> -->
+    </cloud-backup>
+    <device-transfer>
+        <!-- TODO: Add rules for what to include in device transfers. All files are transferred by default. -->
+        <!-- <include domain="sharedpref" path="."/> -->
+        <!-- <exclude domain="sharedpref" path="device.xml"/> -->
+    </device-transfer>
+</data-extraction-rules>

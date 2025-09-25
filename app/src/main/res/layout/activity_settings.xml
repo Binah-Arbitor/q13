@@ -1,31 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/settings_container"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    tools:context=".SettingsActivity">
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="App Mode"
-        android:textAppearance="?android:attr/textAppearanceLarge" />
-
-    <com.google.android.material.switchmaterial.SwitchMaterial
-        android:id="@+id/mode_switch"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Enable Advanced Mode"
-        android:textSize="18sp" />
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="When enabled, the app will start in Advanced Mode, offering more cryptographic options."
-        android:textSize="14sp" />
-
-</LinearLayout>
+    android:layout_height="match_parent" />

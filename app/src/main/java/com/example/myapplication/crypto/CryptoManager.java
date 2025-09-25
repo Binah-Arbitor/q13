@@ -7,6 +7,7 @@ import org.json.JSONException;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
 import javax.crypto.Mac;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.IvParameterSpec;
@@ -59,6 +60,30 @@ public class CryptoManager {
 
     // --- PUBLIC API ---
 
+    public void encrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean useMultithreading) {
+        new Thread(() -> {
+            try {
+                streamEncryptSimple(password, inputStream, totalSize, outputStream);
+                listener.onSuccess("Encryption successful.");
+            } catch (Exception e) {
+                e.printStackTrace();
+                listener.onError("Encryption failed: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    public void decrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean useMultithreading) {
+        new Thread(() -> {
+            try {
+                streamDecryptSimple(password, inputStream, totalSize, outputStream);
+                listener.onSuccess("Decryption successful.");
+            } catch (Exception e) {
+                e.printStackTrace();
+                listener.onError("Decryption failed: " + e.getMessage());
+            }
+        }).start();
+    }
+
     public void encryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream, CryptoOptions options) {
         new Thread(() -> {
             try {
@@ -93,6 +118,65 @@ public class CryptoManager {
             }
         }).start();
     }
+
+    // --- SIMPLE ENCRYPTION/DECRYPTION ---
+
+    private void streamEncryptSimple(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
+        byte[] salt = generateRandom(SALT_LENGTH_BYTES);
+        out.write(salt);
+
+        SecretKeySpec key = deriveKeySimple(password, salt);
+        
+        byte[] iv = generateRandom(IV_LENGTH_BYTES);
+        out.write(iv);
+
+        Cipher cipher = Cipher.getInstance(SIMPLE_CIPHER_TRANSFORMATION, PROVIDER);
+        cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
+
+        try (CipherOutputStream cipherOut = new CipherOutputStream(out, cipher)) {
+            byte[] buffer = new byte[SIMPLE_CHUNK_SIZE];
+            int bytesRead;
+            long processedBytes = 0;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                cipherOut.write(buffer, 0, bytesRead);
+                processedBytes += bytesRead;
+                reportProgress(processedBytes, totalSize);
+            }
+        }
+    }
+
+    private void streamDecryptSimple(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
+        byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
+        SecretKeySpec key = deriveKeySimple(password, salt);
+
+        byte[] iv = readBytes(in, IV_LENGTH_BYTES);
+        
+        Cipher cipher = Cipher.getInstance(SIMPLE_CIPHER_TRANSFORMATION, PROVIDER);
+        cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
+
+        long encryptedDataSize = totalSize - SALT_LENGTH_BYTES - IV_LENGTH_BYTES;
+
+        try (CipherInputStream cipherIn = new CipherInputStream(in, cipher)) {
+            byte[] buffer = new byte[SIMPLE_CHUNK_SIZE];
+            int bytesRead;
+            long processedBytes = 0;
+            while ((bytesRead = cipherIn.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+                processedBytes += bytesRead;
+                reportProgress(processedBytes, encryptedDataSize);
+            }
+        }
+    }
+    
+    private SecretKeySpec deriveKeySimple(String password, byte[] salt) throws Exception {
+        SecretKeyFactory factory = SecretKeyFactory.getInstance(SIMPLE_KEY_DERIVATION_ALGORITHM);
+        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, SIMPLE_KDF_ITERATION_COUNT, SIMPLE_KEY_LENGTH_BITS);
+        byte[] keyBytes = factory.generateSecret(spec).getEncoded();
+        SecretKeySpec secretKey = new SecretKeySpec(keyBytes, SIMPLE_ENCRYPTION_ALGORITHM);
+        Arrays.fill(keyBytes, (byte) 0);
+        return secretKey;
+    }
+
 
     // --- ADVANCED DECRYPTION ---
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <SwitchPreferenceCompat
+        app:key="advanced_mode"
+        app:title="Enable Advanced Mode"
+        app:summaryOn="Advanced features are enabled"
+        app:summaryOff="Advanced features are disabled"
+        app:defaultValue="false" />
+
+</PreferenceScreen>

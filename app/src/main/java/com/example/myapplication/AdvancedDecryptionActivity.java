@@ -111,8 +111,10 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         requestPermissionsLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestMultiplePermissions(),
             permissions -> {
-                if (permissions.values().stream().allMatch(g -> g)) {
+                boolean allGranted = permissions.values().stream().allMatch(g -> g);
+                if (allGranted) {
                     onLog("Storage permissions granted.");
+                    launchFilePicker(); // Permissions granted, now launch the picker
                 } else {
                     Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
                 }
@@ -214,8 +216,11 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void checkPermissionsAndLaunchPicker() {
-        if (!hasStoragePermissions()) requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
-        else launchFilePicker();
+        if (!hasStoragePermissions()) {
+            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
+        } else {
+            launchFilePicker();
+        }
     }
 
     private boolean hasStoragePermissions() {

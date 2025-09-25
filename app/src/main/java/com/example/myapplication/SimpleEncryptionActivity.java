@@ -70,8 +70,16 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
         cryptoManager = new CryptoManager(this, getApplicationContext());
 
+        initializeViews();
         setupLaunchers();
+        setupSpinner();
+        setupBottomNav();
 
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker());
+        encryptButton.setOnClickListener(v -> handleEncryption());
+    }
+
+    private void initializeViews() {
         modeSpinner = findViewById(R.id.mode_spinner);
         passwordInput = findViewById(R.id.password_input);
         fileSelectButton = findViewById(R.id.file_select_button);
@@ -82,23 +90,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
         bottomNav = findViewById(R.id.bottom_nav);
-
-        setupSpinner();
-        setupBottomNav();
-
-        fileSelectButton.setOnClickListener(v -> {
-            if (hasStoragePermissions()) {
-                openFilePicker();
-            } else {
-                requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
-            }
-        });
-
-        encryptButton.setOnClickListener(v -> handleEncryption());
-        
-        if (!hasStoragePermissions()) {
-            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
-        }
     }
 
     private void setupLaunchers() {
@@ -117,20 +108,23 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         requestPermissionsLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestMultiplePermissions(),
             permissions -> {
-                boolean allGranted = true;
-                for (Boolean granted : permissions.values()) {
-                    if (!granted) {
-                        allGranted = false;
-                        break;
-                    }
-                }
+                boolean allGranted = permissions.values().stream().allMatch(p -> p);
                 if (allGranted) {
                     onLog("Storage permissions granted.");
+                    launchFilePicker(); // Launch picker after getting permission
                 } else {
                     Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
                 }
             }
         );
+    }
+
+    private void checkPermissionsAndLaunchPicker() {
+        if (!hasStoragePermissions()) {
+            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
+        } else {
+            launchFilePicker();
+        }
     }
 
     private boolean hasStoragePermissions() {
@@ -142,7 +136,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         return true;
     }
 
-    private void openFilePicker() {
+    private void launchFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
         intent.addCategory(Intent.CATEGORY_OPENABLE);

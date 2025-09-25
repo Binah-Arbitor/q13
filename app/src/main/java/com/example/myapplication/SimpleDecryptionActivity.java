@@ -65,7 +65,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     private ActivityResultLauncher<Intent> signerPublicKeyFilePickerLauncher;
     private ActivityResultLauncher<String[]> requestPermissionsLauncher;
 
-    private ActivityResultLauncher<Intent> currentlyWaitingLauncher;
+    private Runnable afterPermissionGranted;
 
     private enum DecryptionMode { SIMPLE_AES, PGP }
     private DecryptionMode currentMode = DecryptionMode.SIMPLE_AES;
@@ -79,8 +79,21 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
         cryptoManager = new CryptoManager(this, getApplicationContext());
 
+        initializeViews();
         setupLaunchers();
+        setupSpinners();
+        setupBottomNav();
 
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(() -> launchFilePicker(fileToDecryptPickerLauncher, "Select File to Decrypt")));
+        privateKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(() -> launchFilePicker(privateKeyFilePickerLauncher, "Select Private Key")));
+        signerPublicKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(() -> launchFilePicker(signerPublicKeyFilePickerLauncher, "Select Signer Public Key")));
+
+        decryptButton.setOnClickListener(v -> handleDecryption());
+
+        updateUiForMode(currentMode);
+    }
+
+    private void initializeViews() {
         decryptionModeSpinner = findViewById(R.id.decryption_mode_spinner);
         threadModeSpinner = findViewById(R.id.thread_mode_spinner);
         passwordInput = findViewById(R.id.password_input);
@@ -97,21 +110,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
         bottomNav = findViewById(R.id.bottom_nav);
-
-        setupSpinners();
-        setupBottomNav();
-
-        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(fileToDecryptPickerLauncher, "Select File to Decrypt"));
-        privateKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(privateKeyFilePickerLauncher, "Select Private Key"));
-        signerPublicKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(signerPublicKeyFilePickerLauncher, "Select Signer Public Key"));
-
-        decryptButton.setOnClickListener(v -> handleDecryption());
-
-        updateUiForMode(currentMode);
-
-        if (!hasStoragePermissions()) {
-            requestStoragePermissions();
-        }
     }
 
     private void setupLaunchers() {
@@ -122,18 +120,12 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         requestPermissionsLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestMultiplePermissions(),
             permissions -> {
-                boolean allGranted = true;
-                for (Boolean granted : permissions.values()) {
-                    if (!granted) {
-                        allGranted = false;
-                        break;
-                    }
-                }
+                boolean allGranted = permissions.values().stream().allMatch(p -> p);
                 if (allGranted) {
                     onLog("Storage permissions granted.");
-                    if (currentlyWaitingLauncher != null) {
-                        launchFilePicker(currentlyWaitingLauncher, "Select File");
-                        currentlyWaitingLauncher = null; 
+                    if (afterPermissionGranted != null) {
+                        afterPermissionGranted.run();
+                        afterPermissionGranted = null;
                     }
                 } else {
                     Toast.makeText(this, "Storage permissions are required to select files.", Toast.LENGTH_LONG).show();
@@ -158,12 +150,12 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         );
     }
 
-    private void checkPermissionsAndLaunchPicker(ActivityResultLauncher<Intent> launcher, String title) {
+    private void checkPermissionsAndLaunchPicker(Runnable action) {
         if (hasStoragePermissions()) {
-            launchFilePicker(launcher, title);
+            action.run();
         } else {
-            currentlyWaitingLauncher = launcher; // Remember which picker to launch
-            requestStoragePermissions();
+            afterPermissionGranted = action;
+            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
         }
     }
 
@@ -174,10 +166,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             }
         }
         return true;
-    }
-
-    private void requestStoragePermissions() {
-        requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
     }
 
     private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {

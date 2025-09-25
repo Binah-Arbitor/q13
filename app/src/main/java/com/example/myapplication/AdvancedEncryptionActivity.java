@@ -87,10 +87,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
         fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker());
         encryptButton.setOnClickListener(v -> handleEncryption());
-
-        if (!hasStoragePermissions()) {
-            requestStoragePermissions();
-        }
     }
 
     private void initializeViews() {
@@ -135,15 +131,10 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         requestPermissionsLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestMultiplePermissions(),
             permissions -> {
-                boolean allGranted = true;
-                for (Boolean granted : permissions.values()) {
-                    if (!granted) {
-                        allGranted = false;
-                        break;
-                    }
-                }
+                boolean allGranted = permissions.values().stream().allMatch(p -> p);
                 if (allGranted) {
                     onLog("Storage permissions granted.");
+                    launchFilePicker(); // Launch picker after getting permission
                 } else {
                     Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
                 }
@@ -239,10 +230,10 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void checkPermissionsAndLaunchPicker() {
-        if (hasStoragePermissions()) {
-            launchFilePicker();
+        if (!hasStoragePermissions()) {
+            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
         } else {
-            requestStoragePermissions();
+            launchFilePicker();
         }
     }
 
@@ -253,10 +244,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             }
         }
         return true;
-    }
-
-    private void requestStoragePermissions() {
-        requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
     }
 
     private void launchFilePicker() {

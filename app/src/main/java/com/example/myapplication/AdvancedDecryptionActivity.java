@@ -182,9 +182,8 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
                 totalSize = pfd.getStatSize();
             }
             InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-            // This creates a new file URI with a .dec suffix for the output
-            Uri outputUri = createOutputUri(selectedFileUri, ".dec");
-            OutputStream outputStream = getContentResolver().openOutputStream(outputUri);
+            // Open the selected file for writing, which will overwrite it.
+            OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
 
             if (inputStream == null || outputStream == null) {
                 throw new Exception("Failed to open streams for the selected file.");
@@ -200,18 +199,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             setUiEnabled(true);
         }
     }
-    
-    private Uri createOutputUri(Uri inputUri, String suffix) {
-        String inputFileName = getFileName(inputUri);
-        String outputFileName = inputFileName.replaceAll("\\.enc$", "") + suffix;
-        
-        // This part is a simplification. In a real app, you would use MediaStore or Storage Access Framework
-        // to properly create a new file in a user-chosen location.
-        // For this example, we just create a file in the app's cache directory.
-        File outputFile = new File(getCacheDir(), outputFileName);
-        return Uri.fromFile(outputFile);
-    }
-
 
     private void setUiEnabled(boolean enabled) {
         runOnUiThread(() -> {

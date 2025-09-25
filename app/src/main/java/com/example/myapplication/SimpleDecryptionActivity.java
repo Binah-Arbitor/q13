@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.AdapterView;
@@ -18,14 +19,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -43,6 +42,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
     private Uri selectedFileUri, privateKeyUri, signerPublicKeyUri;
     private CryptoManager cryptoManager;
+    private int lastProgress = -1;
 
     private ActivityResultLauncher<Intent> fileToDecryptPickerLauncher;
     private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
@@ -57,7 +57,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_simple_decryption);
 
-        cryptoManager = new CryptoManager(this);
+        cryptoManager = new CryptoManager(this, getApplicationContext());
 
         // Initialize launchers
         fileToDecryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
@@ -143,6 +143,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         String password = passwordInput.getText().toString();
         if (password.isEmpty()) {
             onError("Please enter a password.");
+            setUiEnabled(true);
             return;
         }
         
@@ -150,25 +151,25 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         String modeLog = useMultithreading ? "Performance (Parallel)" : "Efficiency (Single-Thread)";
         onLog("Starting Simple AES decryption in " + modeLog + " mode...");
         
-        new Thread(() -> {
-            try {
-                onLog("Verifying and decrypting data to memory buffer...");
-                InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-                cryptoManager.decrypt(password, inputStream, buffer, useMultithreading);
-
-                onLog("Decryption successful. Overwriting original file...");
-                try (OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt")) {
-                    if (outputStream == null) throw new Exception("Failed to open output stream for the file.");
-                    buffer.writeTo(outputStream);
-                }
-                onSuccess("File decrypted and overwritten successfully.");
-
-            } catch (Exception e) {
-                onError("Decryption failed: " + e.getMessage());
+        try {
+             long totalSize;
+            try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
+                totalSize = pfd.getStatSize();
             }
-        }).start();
+
+            InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+            // Overwrite the original file with the decrypted content
+            OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
+
+            if (inputStream == null || outputStream == null) {
+                throw new Exception("Failed to open streams for the selected file.");
+            }
+
+            cryptoManager.decrypt(password, inputStream, totalSize, outputStream, useMultithreading);
+
+        } catch (Exception e) {
+            onError("Decryption failed: " + e.getMessage());
+        }
     }
     
     private void handlePgpDecryption() {
@@ -229,6 +230,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             if (enabled) {
                 progressBar.setVisibility(View.GONE);
             } else {
+                lastProgress = -1; // Reset progress
                 progressBar.setVisibility(View.VISIBLE);
                 progressBar.setProgress(0);
                 statusTextView.setVisibility(View.GONE);
@@ -273,7 +275,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         }
         if (result == null) {
             result = uri.getPath();
-            if(result == null) return null;
+            if(result == null) return "Unknown";
             int cut = result.lastIndexOf('/');
             if (cut != -1) {
                 result = result.substring(cut + 1);
@@ -284,7 +286,15 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
     @Override
     public void onProgress(int progress) {
-        runOnUiThread(() -> progressBar.setProgress(progress));
+        runOnUiThread(() -> {
+             progressBar.setProgress(progress);
+             lastProgress = progress;
+        });
+    }
+
+    @Override
+    public int getLastReportedProgress() {
+        return lastProgress;
     }
 
     @Override

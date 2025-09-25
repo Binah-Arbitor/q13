@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.AdapterView;
@@ -17,14 +18,12 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -42,6 +41,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private Uri selectedFileUri;
     private CryptoManager cryptoManager;
     private String selectedMode = "Efficiency (Single-Thread)";
+    private int lastProgress = -1;
 
     private ActivityResultLauncher<Intent> filePickerLauncher;
 
@@ -50,9 +50,8 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_simple_encryption);
 
-        cryptoManager = new CryptoManager(this);
+        cryptoManager = new CryptoManager(this, getApplicationContext());
 
-        // Initialize the ActivityResultLauncher
         filePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -105,31 +104,24 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         String modeLog = useMultithreading ? "Performance (Parallel)" : "Efficiency (Single-Thread)";
         onLog("Starting encryption in " + modeLog + " mode...");
 
-        new Thread(() -> {
-            try {
-                long totalSize;
-                try (android.os.ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
-                    totalSize = pfd.getStatSize();
-                }
+        try {
+            long totalSize;
+            try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
+                totalSize = pfd.getStatSize();
+            }
+            InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+            // Use "wt" mode to truncate and overwrite the original file
+            OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
 
-                onLog("Encrypting data to memory buffer...");
-                InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            if (inputStream == null || outputStream == null) {
+                throw new Exception("Failed to open streams for the selected file.");
+            }
 
-                cryptoManager.encrypt(password, inputStream, totalSize, buffer, useMultithreading);
+            cryptoManager.encrypt(password, inputStream, totalSize, outputStream, useMultithreading);
 
-                onLog("Encryption successful. Overwriting original file...");
-                try (OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt")) {
-                    if (outputStream == null) throw new Exception("Failed to open output stream.");
-                    buffer.writeTo(outputStream);
-                }
-
-                onSuccess("File encrypted and overwritten successfully.");
-
-            } catch (Exception e) {
-                onError("Encryption failed: " + e.getMessage());
-            } 
-        }).start();
+        } catch (Exception e) {
+            onError("Encryption failed: " + e.getMessage());
+        }
     }
 
     private void setUiEnabled(boolean enabled) {
@@ -142,6 +134,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             if (enabled) {
                 progressBar.setVisibility(View.GONE);
             } else {
+                lastProgress = -1; // Reset progress
                 progressBar.setVisibility(View.VISIBLE);
                 progressBar.setProgress(0);
                 statusTextView.setVisibility(View.GONE);
@@ -197,6 +190,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
         if (result == null) {
             result = uri.getPath();
+            if (result == null) return "Unknown";
             int cut = result.lastIndexOf('/');
             if (cut != -1) {
                 result = result.substring(cut + 1);
@@ -207,7 +201,15 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
     @Override
     public void onProgress(int progress) {
-        runOnUiThread(() -> progressBar.setProgress(progress));
+        runOnUiThread(() -> {
+            progressBar.setProgress(progress);
+            lastProgress = progress;
+        });
+    }
+    
+    @Override
+    public int getLastReportedProgress() {
+        return lastProgress;
     }
 
     @Override

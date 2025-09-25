@@ -28,7 +28,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -52,7 +51,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private TextView consoleTextView;
-    private BottomNavigationView bottomNav;
 
     private Uri selectedFileUri;
     private CryptoManager cryptoManager;
@@ -81,10 +79,8 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         statusTextView = findViewById(R.id.status_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
-        bottomNav = findViewById(R.id.bottom_nav);
 
         setupSpinner();
-        setupBottomNav();
 
         fileSelectButton.setOnClickListener(v -> {
             if (hasStoragePermissions()) {
@@ -96,7 +92,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
         encryptButton.setOnClickListener(v -> handleEncryption());
         
-        // Request permissions on startup if not already granted
         if (!hasStoragePermissions()) {
             requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
         }
@@ -127,8 +122,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                 }
                 if (allGranted) {
                     onLog("Storage permissions granted.");
-                    // You could automatically open the file picker here if desired
-                    // openFilePicker();
                 } else {
                     Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
                 }
@@ -216,26 +209,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
-        });
-    }
-
-    private void setupBottomNav() {
-        bottomNav.setSelectedItemId(R.id.nav_simple_encrypt);
-        bottomNav.setOnNavigationItemSelectedListener(item -> {
-            int itemId = item.getItemId();
-            if (itemId == R.id.nav_simple_encrypt) {
-                return true;
-            } else if (itemId == R.id.nav_advanced_encrypt) {
-                startActivity(new Intent(this, AdvancedEncryptionActivity.class));
-                return true;
-            } else if (itemId == R.id.nav_simple_decrypt) {
-                startActivity(new Intent(this, SimpleDecryptionActivity.class));
-                return true;
-            } else if (itemId == R.id.nav_advanced_decrypt) {
-                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
-                return true;
-            }
-            return false;
         });
     }
 

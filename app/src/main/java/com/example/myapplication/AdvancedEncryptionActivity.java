@@ -1,11 +1,15 @@
 package com.example.myapplication;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -16,16 +20,24 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
+
+    // Permissions
+    private static final String[] STORAGE_PERMISSIONS;
+    static {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE};
+        } else {
+            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
+        }
+    }
 
     private Button publicKeySelectButton, privateKeySelectButton, fileSelectButton, encryptButton;
     private TextView publicKeyTextView, privateKeyTextView, selectedFileTextView, statusTextView;
@@ -43,18 +55,19 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     private ActivityResultLauncher<Intent> publicKeyFilePickerLauncher;
     private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
     private ActivityResultLauncher<Intent> fileToEncryptPickerLauncher;
+    private ActivityResultLauncher<String[]> requestPermissionsLauncher;
+
+    private ActivityResultLauncher<Intent> currentlyWaitingLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_encryption);
+        getSupportActionBar().setTitle("Advanced Encryption");
 
         cryptoManager = new CryptoManager(this, getApplicationContext());
 
-        // Initialize launchers
-        publicKeyFilePickerLauncher = createAndRegisterLauncher(publicKeyTextView, "Public Key: ", uri -> publicKeyUri = uri);
-        privateKeyFilePickerLauncher = createAndRegisterLauncher(privateKeyTextView, "Private Key: ", uri -> privateKeyUri = uri);
-        fileToEncryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
+        setupLaunchers();
 
         publicKeySelectButton = findViewById(R.id.public_key_select_button);
         privateKeySelectButton = findViewById(R.id.private_key_select_button);
@@ -73,11 +86,43 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
         setupBottomNav();
 
-        publicKeySelectButton.setOnClickListener(v -> launchFilePicker(publicKeyFilePickerLauncher, "Select Public Key"));
-        privateKeySelectButton.setOnClickListener(v -> launchFilePicker(privateKeyFilePickerLauncher, "Select Private Key"));
-        fileSelectButton.setOnClickListener(v -> launchFilePicker(fileToEncryptPickerLauncher, "Select File to Encrypt"));
+        publicKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(publicKeyFilePickerLauncher, "Select Public Key"));
+        privateKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(privateKeyFilePickerLauncher, "Select Private Key"));
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(fileToEncryptPickerLauncher, "Select File to Encrypt"));
 
         encryptButton.setOnClickListener(v -> handleEncryption());
+
+        if (!hasStoragePermissions()) {
+            requestStoragePermissions();
+        }
+    }
+
+    private void setupLaunchers() {
+        publicKeyFilePickerLauncher = createAndRegisterLauncher(publicKeyTextView, "Public Key: ", uri -> publicKeyUri = uri);
+        privateKeyFilePickerLauncher = createAndRegisterLauncher(privateKeyTextView, "Private Key: ", uri -> privateKeyUri = uri);
+        fileToEncryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
+
+        requestPermissionsLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestMultiplePermissions(),
+            permissions -> {
+                boolean allGranted = true;
+                for (Boolean granted : permissions.values()) {
+                    if (!granted) {
+                        allGranted = false;
+                        break;
+                    }
+                }
+                if (allGranted) {
+                    onLog("Storage permissions granted.");
+                    if (currentlyWaitingLauncher != null) {
+                        launchFilePicker(currentlyWaitingLauncher, "Select File");
+                        currentlyWaitingLauncher = null;
+                    }
+                } else {
+                    Toast.makeText(this, "Storage permissions are required to select files.", Toast.LENGTH_LONG).show();
+                }
+            }
+        );
     }
 
     private ActivityResultLauncher<Intent> createAndRegisterLauncher(TextView textView, String prefix, UriConsumer uriConsumer) {
@@ -94,6 +139,28 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 }
             }
         );
+    }
+
+    private void checkPermissionsAndLaunchPicker(ActivityResultLauncher<Intent> launcher, String title) {
+        if (hasStoragePermissions()) {
+            launchFilePicker(launcher, title);
+        } else {
+            currentlyWaitingLauncher = launcher;
+            requestStoragePermissions();
+        }
+    }
+
+    private boolean hasStoragePermissions() {
+        for (String permission : STORAGE_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void requestStoragePermissions() {
+        requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
     }
 
     private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
@@ -134,14 +201,19 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void setupBottomNav() {
-        // This screen is not a main destination, so no item is selected.
+        bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
-            int itemId = item.getItemId();
-            if (itemId == R.id.nav_encrypt) {
+             int itemId = item.getItemId();
+            if (itemId == R.id.nav_simple_encrypt) {
                 startActivity(new Intent(this, SimpleEncryptionActivity.class));
                 return true;
-            } else if (itemId == R.id.nav_decrypt) {
+            } else if (itemId == R.id.nav_advanced_encrypt) {
+                return true;
+            } else if (itemId == R.id.nav_simple_decrypt) {
                 startActivity(new Intent(this, SimpleDecryptionActivity.class));
+                return true;
+            } else if (itemId == R.id.nav_advanced_decrypt) {
+                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
                 return true;
             }
             return false;
@@ -169,6 +241,21 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             }
         }
         return result;
+    }
+    
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_settings) {
+            startActivity(new Intent(this, SettingsActivity.class));
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override

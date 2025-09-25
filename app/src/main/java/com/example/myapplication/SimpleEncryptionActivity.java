@@ -1,11 +1,16 @@
 package com.example.myapplication;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -18,6 +23,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
@@ -28,6 +34,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class SimpleEncryptionActivity extends AppCompatActivity implements CryptoListener {
+
+    // Permissions
+    private static final String[] STORAGE_PERMISSIONS;
+    static {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE};
+        } else {
+            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
+        }
+    }
 
     private Spinner modeSpinner;
     private EditText passwordInput;
@@ -44,25 +60,17 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private int lastProgress = -1;
 
     private ActivityResultLauncher<Intent> filePickerLauncher;
+    private ActivityResultLauncher<String[]> requestPermissionsLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_simple_encryption);
+        getSupportActionBar().setTitle("Simple Encryption");
 
         cryptoManager = new CryptoManager(this, getApplicationContext());
 
-        filePickerLauncher = registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            result -> {
-                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                    selectedFileUri = result.getData().getData();
-                    String fileName = getFileName(selectedFileUri);
-                    selectedFileTextView.setText("Selected file: " + fileName);
-                    onLog("File selected: " + fileName);
-                }
-            }
-        );
+        setupLaunchers();
 
         modeSpinner = findViewById(R.id.mode_spinner);
         passwordInput = findViewById(R.id.password_input);
@@ -79,13 +87,69 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         setupBottomNav();
 
         fileSelectButton.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType("*/*");
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            filePickerLauncher.launch(Intent.createChooser(intent, "Select a file to encrypt"));
+            if (hasStoragePermissions()) {
+                openFilePicker();
+            } else {
+                requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
+            }
         });
 
         encryptButton.setOnClickListener(v -> handleEncryption());
+        
+        // Request permissions on startup if not already granted
+        if (!hasStoragePermissions()) {
+            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
+        }
+    }
+
+    private void setupLaunchers() {
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    selectedFileUri = result.getData().getData();
+                    String fileName = getFileName(selectedFileUri);
+                    selectedFileTextView.setText("Selected file: " + fileName);
+                    onLog("File selected: " + fileName);
+                }
+            }
+        );
+
+        requestPermissionsLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestMultiplePermissions(),
+            permissions -> {
+                boolean allGranted = true;
+                for (Boolean granted : permissions.values()) {
+                    if (!granted) {
+                        allGranted = false;
+                        break;
+                    }
+                }
+                if (allGranted) {
+                    onLog("Storage permissions granted.");
+                    // You could automatically open the file picker here if desired
+                    // openFilePicker();
+                } else {
+                    Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
+                }
+            }
+        );
+    }
+
+    private boolean hasStoragePermissions() {
+        for (String permission : STORAGE_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void openFilePicker() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        filePickerLauncher.launch(Intent.createChooser(intent, "Select a file to encrypt"));
     }
 
     private void handleEncryption() {
@@ -110,7 +174,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                 totalSize = pfd.getStatSize();
             }
             InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-            // Use "wt" mode to truncate and overwrite the original file
             OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
 
             if (inputStream == null || outputStream == null) {
@@ -159,7 +222,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_simple_encrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
-             int itemId = item.getItemId();
+            int itemId = item.getItemId();
             if (itemId == R.id.nav_simple_encrypt) {
                 return true;
             } else if (itemId == R.id.nav_advanced_encrypt) {
@@ -197,6 +260,21 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             }
         }
         return result;
+    }
+    
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_settings) {
+            startActivity(new Intent(this, SettingsActivity.class));
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     @Override

@@ -134,19 +134,14 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void setupBottomNav() {
-        bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
+        // This screen is not a main destination, so no item is selected.
         bottomNav.setOnNavigationItemSelectedListener(item -> {
             int itemId = item.getItemId();
-            if (itemId == R.id.nav_simple_encrypt) {
+            if (itemId == R.id.nav_encrypt) {
                 startActivity(new Intent(this, SimpleEncryptionActivity.class));
                 return true;
-            } else if (itemId == R.id.nav_advanced_encrypt) {
-                return true;
-            } else if (itemId == R.id.nav_simple_decrypt) {
+            } else if (itemId == R.id.nav_decrypt) {
                 startActivity(new Intent(this, SimpleDecryptionActivity.class));
-                return true;
-            } else if (itemId == R.id.nav_advanced_decrypt) {
-                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
                 return true;
             }
             return false;

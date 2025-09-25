@@ -4,27 +4,122 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
     tools:context=".AdvancedDecryptionActivity">
 
-    <TextView
-        android:id="@+id/title_textview"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Advanced Decryption"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_centerHorizontal="true"
-        android:layout_marginBottom="16dp" />
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_above="@+id/bottom_nav">
 
-    <TextView
-        android:id="@+id/not_implemented_textview"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/title_textview"
-        android:layout_centerHorizontal="true"
-        android:text="This feature is not yet implemented."
-        android:textSize="18sp" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- File Input -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="File and Password"
+                android:textAppearance="?android:attr/textAppearanceMedium"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/file_select_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Select Encrypted File" />
+
+            <TextView
+                android:id="@+id/selected_file_textview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No file selected" />
+                
+            <EditText
+                android:id="@+id/password_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textPassword"
+                android:hint="Password" />
+
+            <!-- Header Info Display -->
+            <LinearLayout
+                android:id="@+id/header_info_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp"
+                android:visibility="gone" 
+                tools:visibility="visible">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Encryption Parameters (from file)"
+                    android:textAppearance="?android:attr/textAppearanceMedium"
+                    android:textStyle="bold" />
+                
+                <TextView android:id="@+id/info_protocol" style="@style/HeaderInfoText" tools:text="Protocol: AES"/>
+                <TextView android:id="@+id/info_key_length" style="@style/HeaderInfoText" tools:text="Key Length: 256-bit"/>
+                <TextView android:id="@+id/info_mode" style="@style/HeaderInfoText" tools:text="Mode: GCM"/>
+                <TextView android:id="@+id/info_padding" style="@style/HeaderInfoText" tools:text="Padding: NoPadding"/>
+                <TextView android:id="@+id/info_kdf" style="@style/HeaderInfoText" tools:text="KDF: PBKDF2WithHmacSHA256"/>
+
+            </LinearLayout>
+
+            <!-- Actions -->
+            <Button
+                android:id="@+id/decrypt_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Decrypt" />
+
+            <!-- Status and Console -->
+            <FrameLayout
+                android:id="@+id/status_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+        
+                <ProgressBar
+                    android:id="@+id/progress_bar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/status_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:text="✓ SUCCESS" />
+            </FrameLayout>
+
+            <ScrollView
+                android:id="@+id/console_scrollview"
+                android:layout_width="match_parent"
+                android:layout_height="150dp"
+                android:layout_marginTop="8dp"
+                android:background="#f0f0f0">
+
+                <TextView
+                    android:id="@+id/console_textview"
+                    android:layout_width="match_parent"
+                    android.layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:fontFamily="monospace"/>
+            </ScrollView>
+
+        </LinearLayout>
+    </ScrollView>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"

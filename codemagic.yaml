@@ -6,7 +6,7 @@ workflows:
   android-build:
     name: Android Build Workflow
     # Specify the machine type. mac_mini_m1 is for the free tier macOS environment.
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m2
 
     # Define the build environment.
     environment:

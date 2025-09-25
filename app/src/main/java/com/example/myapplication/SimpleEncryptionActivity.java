@@ -28,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -51,6 +52,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private TextView consoleTextView;
+    private BottomNavigationView bottomNav;
 
     private Uri selectedFileUri;
     private CryptoManager cryptoManager;
@@ -79,8 +81,10 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         statusTextView = findViewById(R.id.status_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
+        bottomNav = findViewById(R.id.bottom_nav);
 
         setupSpinner();
+        setupBottomNav();
 
         fileSelectButton.setOnClickListener(v -> {
             if (hasStoragePermissions()) {
@@ -209,6 +213,22 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) { }
+        });
+    }
+
+    private void setupBottomNav() {
+        bottomNav.setSelectedItemId(R.id.nav_simple_encrypt);
+        bottomNav.setOnNavigationItemSelectedListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_simple_encrypt) {
+                return true; // Do nothing, already on this screen
+            } else if (itemId == R.id.nav_simple_decrypt) {
+                Intent intent = new Intent(this, SimpleDecryptionActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(intent);
+                return true;
+            }
+            return false;
         });
     }
 

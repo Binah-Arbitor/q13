@@ -78,10 +78,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
 
         fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker());
         decryptButton.setOnClickListener(v -> handleDecryption());
-
-        if (!hasStoragePermissions()) {
-            requestStoragePermissions();
-        }
     }
 
     private void initializeViews() {

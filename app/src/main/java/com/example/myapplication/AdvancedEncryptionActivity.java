@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.Button;
@@ -15,20 +16,19 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
     private Button publicKeySelectButton, privateKeySelectButton, fileSelectButton, encryptButton;
-    private TextView publicKeyTextView, privateKeyTextView, selectedFileTextView;
+    private TextView publicKeyTextView, privateKeyTextView, selectedFileTextView, statusTextView;
     private EditText passphraseInput;
     private CheckBox signCheckBox;
     private ProgressBar progressBar;
@@ -38,6 +38,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
     private Uri publicKeyUri, privateKeyUri, selectedFileUri;
     private CryptoManager cryptoManager;
+    private int lastProgress = -1;
 
     private ActivityResultLauncher<Intent> publicKeyFilePickerLauncher;
     private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
@@ -48,7 +49,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_encryption);
 
-        cryptoManager = new CryptoManager();
+        cryptoManager = new CryptoManager(this, getApplicationContext());
 
         // Initialize launchers
         publicKeyFilePickerLauncher = createAndRegisterLauncher(publicKeyTextView, "Public Key: ", uri -> publicKeyUri = uri);
@@ -65,6 +66,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         passphraseInput = findViewById(R.id.passphrase_input);
         signCheckBox = findViewById(R.id.sign_checkbox);
         progressBar = findViewById(R.id.progress_bar);
+        statusTextView = findViewById(R.id.status_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
         bottomNav = findViewById(R.id.bottom_nav);
@@ -107,61 +109,28 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void handleEncryption() {
-        if (selectedFileUri == null || publicKeyUri == null) {
-            onError("Please select a file and a public key.");
-            return;
-        }
+        setUiEnabled(false);
+        onError("PGP encryption is not yet implemented.");
+    }
 
-        boolean shouldSign = signCheckBox.isChecked();
-        if (shouldSign && privateKeyUri == null) {
-            onError("Please select a private key for signing.");
-            return;
-        }
+    private void setUiEnabled(boolean enabled) {
+        runOnUiThread(() -> {
+            encryptButton.setEnabled(enabled);
+            fileSelectButton.setEnabled(enabled);
+            publicKeySelectButton.setEnabled(enabled);
+            privateKeySelectButton.setEnabled(enabled);
+            passphraseInput.setEnabled(enabled);
+            signCheckBox.setEnabled(enabled);
 
-        String passphrase = passphraseInput.getText().toString();
-        if (shouldSign && passphrase.isEmpty()) {
-            onError("Please enter a passphrase for the private key.");
-            return;
-        }
-
-        // Show progress bar and clear console
-        progressBar.setVisibility(View.VISIBLE);
-        consoleTextView.setText("");
-        onLog("Starting encryption...");
-
-        new Thread(() -> {
-            try {
-                // 1. Encrypt to a temporary in-memory buffer first
-                onLog("Encrypting data to memory buffer...");
-                InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-
-                // Determine if we are signing or just encrypting
-                if (shouldSign) {
-                    onLog("Encryption with signing selected.");
-                    cryptoManager.encryptAndSign(this, publicKeyUri, privateKeyUri, passphrase, inputStream, buffer);
-                } else {
-                    onLog("Encryption only selected.");
-                    cryptoManager.encrypt(this, publicKeyUri, inputStream, buffer);
-                }
-
-                // 2. If encryption is successful, write the buffer to the original file
-                onLog("Encryption successful. Writing to destination file...");
-                try (OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt")) {
-                    if (outputStream == null) {
-                        throw new Exception("Failed to open output stream for the file.");
-                    }
-                    buffer.writeTo(outputStream);
-                }
-
-                onSuccess("File encrypted successfully and overwritten.");
-
-            } catch (Exception e) {
-                onError("Encryption failed: " + e.getMessage());
-            } finally {
-                runOnUiThread(() -> progressBar.setVisibility(View.GONE));
+            if (enabled) {
+                progressBar.setVisibility(View.GONE);
+            } else {
+                lastProgress = -1; // Reset progress
+                progressBar.setVisibility(View.VISIBLE);
+                progressBar.setProgress(0);
+                statusTextView.setVisibility(View.GONE);
             }
-        }).start();
+        });
     }
 
     private void setupBottomNav() {
@@ -191,13 +160,14 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                     if (nameIndex != -1) {
-                        result = cursor.getString(nameIndex);
+                         result = cursor.getString(nameIndex);
                     }
                 }
             }
         }
         if (result == null) {
             result = uri.getPath();
+            if (result == null) return "Unknown";
             int cut = result.lastIndexOf('/');
             if (cut != -1) {
                 result = result.substring(cut + 1);
@@ -208,12 +178,24 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
     @Override
     public void onProgress(int progress) {
-        runOnUiThread(() -> progressBar.setProgress(progress));
+        runOnUiThread(() -> {
+            progressBar.setProgress(progress);
+            lastProgress = progress;
+        });
+    }
+
+    @Override
+    public int getLastReportedProgress() {
+        return lastProgress;
     }
 
     @Override
     public void onSuccess(String result) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
+            statusTextView.setVisibility(View.VISIBLE);
+            statusTextView.setText("✓ SUCCESS");
+            statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green));
             consoleTextView.append("\n[SUCCESS] " + result + "\n");
             scrollToBottom();
             Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show();
@@ -223,9 +205,13 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     @Override
     public void onError(String errorMessage) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
+            statusTextView.setVisibility(View.VISIBLE);
+            statusTextView.setText("✗ ERROR");
+            statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red));
             consoleTextView.append("\n[ERROR] " + errorMessage + "\n");
             scrollToBottom();
-            Toast.makeText(this, "Error: " + errorMessage, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show();
         });
     }
 

@@ -345,17 +345,13 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
-             int itemId = item.getItemId();
-            if (itemId == R.id.nav_simple_encrypt) {
-                startActivity(new Intent(this, SimpleEncryptionActivity.class));
-                return true;
-            } else if (itemId == R.id.nav_advanced_encrypt) {
-                return true;
-            } else if (itemId == R.id.nav_simple_decrypt) {
-                startActivity(new Intent(this, SimpleDecryptionActivity.class));
-                return true;
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_advanced_encrypt) {
+                return true; // Already here
             } else if (itemId == R.id.nav_advanced_decrypt) {
-                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
+                Intent intent = new Intent(this, AdvancedDecryptionActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(intent);
                 return true;
             }
             return false;
@@ -449,5 +445,10 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
     private void scrollToBottom() {
         consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN));
+    }
+    
+    // To avoid boilerplate in setOnItemSelectedListener
+    private static abstract class SimpleItemSelectedListener implements android.widget.AdapterView.OnItemSelectedListener {
+        @Override public void onNothingSelected(android.widget.AdapterView<?> parent) {} // No-op
     }
 }

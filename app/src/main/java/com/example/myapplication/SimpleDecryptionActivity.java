@@ -132,7 +132,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
                 if (allGranted) {
                     onLog("Storage permissions granted.");
                     if (currentlyWaitingLauncher != null) {
-                        // A bit of a hack: we need to know which picker to launch after permission is granted
                         launchFilePicker(currentlyWaitingLauncher, "Select File");
                         currentlyWaitingLauncher = null; 
                     }
@@ -313,16 +312,12 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         bottomNav.setSelectedItemId(R.id.nav_simple_decrypt);
         bottomNav.setOnNavigationItemSelectedListener(item -> {
             int itemId = item.getItemId();
-            if (itemId == R.id.nav_simple_encrypt) {
-                startActivity(new Intent(this, SimpleEncryptionActivity.class));
-                return true;
-            } else if (itemId == R.id.nav_advanced_encrypt) {
-                startActivity(new Intent(this, AdvancedEncryptionActivity.class));
-                return true;
-            } else if (itemId == R.id.nav_simple_decrypt) {
-                return true;
-            } else if (itemId == R.id.nav_advanced_decrypt) {
-                startActivity(new Intent(this, AdvancedDecryptionActivity.class));
+            if (itemId == R.id.nav_simple_decrypt) {
+                return true; // Do nothing, already on this screen
+            } else if (itemId == R.id.nav_simple_encrypt) {
+                Intent intent = new Intent(this, SimpleEncryptionActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                startActivity(intent);
                 return true;
             }
             return false;

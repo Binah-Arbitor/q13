@@ -7,15 +7,18 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
@@ -23,9 +26,16 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import com.example.myapplication.crypto.CipherInfo;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
+import com.example.myapplication.crypto.CryptoOptions;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.List;
+import java.util.Locale;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
@@ -39,25 +49,27 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
     }
 
-    private Button publicKeySelectButton, privateKeySelectButton, fileSelectButton, encryptButton;
-    private TextView publicKeyTextView, privateKeyTextView, selectedFileTextView, statusTextView;
-    private EditText passphraseInput;
-    private CheckBox signCheckBox;
+    // UI Elements
+    private Spinner protocolSpinner, keyLengthSpinner, modeSpinner, paddingSpinner, kdfSpinner;
+    private SeekBar chunkSizeSlider, threadCountSlider;
+    private TextView chunkSizeValueTextView, threadCountValueTextView;
+    private EditText passwordInput;
+    private Button fileSelectButton, encryptButton;
+    private TextView selectedFileTextView, statusTextView;
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private TextView consoleTextView;
     private BottomNavigationView bottomNav;
 
-    private Uri publicKeyUri, privateKeyUri, selectedFileUri;
+    // State
+    private Uri selectedFileUri;
     private CryptoManager cryptoManager;
     private int lastProgress = -1;
+    private int currentChunkSizeKb = 4; // Default chunk size
+    private int currentThreadCount = 1;
 
-    private ActivityResultLauncher<Intent> publicKeyFilePickerLauncher;
-    private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
-    private ActivityResultLauncher<Intent> fileToEncryptPickerLauncher;
+    private ActivityResultLauncher<Intent> filePickerLauncher;
     private ActivityResultLauncher<String[]> requestPermissionsLauncher;
-
-    private ActivityResultLauncher<Intent> currentlyWaitingLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,29 +79,13 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
         cryptoManager = new CryptoManager(this, getApplicationContext());
 
+        initializeViews();
         setupLaunchers();
-
-        publicKeySelectButton = findViewById(R.id.public_key_select_button);
-        privateKeySelectButton = findViewById(R.id.private_key_select_button);
-        fileSelectButton = findViewById(R.id.file_select_button);
-        encryptButton = findViewById(R.id.encrypt_button);
-        publicKeyTextView = findViewById(R.id.public_key_textview);
-        privateKeyTextView = findViewById(R.id.private_key_textview);
-        selectedFileTextView = findViewById(R.id.selected_file_textview);
-        passphraseInput = findViewById(R.id.passphrase_input);
-        signCheckBox = findViewById(R.id.sign_checkbox);
-        progressBar = findViewById(R.id.progress_bar);
-        statusTextView = findViewById(R.id.status_textview);
-        consoleScrollView = findViewById(R.id.console_scrollview);
-        consoleTextView = findViewById(R.id.console_textview);
-        bottomNav = findViewById(R.id.bottom_nav);
-
+        setupSpinners();
+        setupSliders();
         setupBottomNav();
 
-        publicKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(publicKeyFilePickerLauncher, "Select Public Key"));
-        privateKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(privateKeyFilePickerLauncher, "Select Private Key"));
-        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(fileToEncryptPickerLauncher, "Select File to Encrypt"));
-
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker());
         encryptButton.setOnClickListener(v -> handleEncryption());
 
         if (!hasStoragePermissions()) {
@@ -97,10 +93,44 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
     }
 
+    private void initializeViews() {
+        // Spinners
+        protocolSpinner = findViewById(R.id.protocol_spinner);
+        keyLengthSpinner = findViewById(R.id.key_length_spinner);
+        modeSpinner = findViewById(R.id.mode_spinner);
+        paddingSpinner = findViewById(R.id.padding_spinner);
+        kdfSpinner = findViewById(R.id.kdf_spinner);
+
+        // Sliders and their value displays
+        chunkSizeSlider = findViewById(R.id.chunk_size_slider);
+        threadCountSlider = findViewById(R.id.thread_count_slider);
+        chunkSizeValueTextView = findViewById(R.id.chunk_size_value_textview);
+        threadCountValueTextView = findViewById(R.id.thread_count_value_textview);
+
+        // Other UI components
+        passwordInput = findViewById(R.id.password_input);
+        fileSelectButton = findViewById(R.id.file_select_button);
+        encryptButton = findViewById(R.id.encrypt_button);
+        selectedFileTextView = findViewById(R.id.selected_file_textview);
+        progressBar = findViewById(R.id.progress_bar);
+        statusTextView = findViewById(R.id.status_textview);
+        consoleScrollView = findViewById(R.id.console_scrollview);
+        consoleTextView = findViewById(R.id.console_textview);
+        bottomNav = findViewById(R.id.bottom_nav);
+    }
+
     private void setupLaunchers() {
-        publicKeyFilePickerLauncher = createAndRegisterLauncher(publicKeyTextView, "Public Key: ", uri -> publicKeyUri = uri);
-        privateKeyFilePickerLauncher = createAndRegisterLauncher(privateKeyTextView, "Private Key: ", uri -> privateKeyUri = uri);
-        fileToEncryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    selectedFileUri = result.getData().getData();
+                    String fileName = getFileName(selectedFileUri);
+                    selectedFileTextView.setText("Selected file: " + fileName);
+                    onLog("File selected: " + fileName);
+                }
+            }
+        );
 
         requestPermissionsLauncher = registerForActivityResult(
             new ActivityResultContracts.RequestMultiplePermissions(),
@@ -114,38 +144,104 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 }
                 if (allGranted) {
                     onLog("Storage permissions granted.");
-                    if (currentlyWaitingLauncher != null) {
-                        launchFilePicker(currentlyWaitingLauncher, "Select File");
-                        currentlyWaitingLauncher = null;
-                    }
                 } else {
-                    Toast.makeText(this, "Storage permissions are required to select files.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
                 }
             }
         );
     }
 
-    private ActivityResultLauncher<Intent> createAndRegisterLauncher(TextView textView, String prefix, UriConsumer uriConsumer) {
-        return registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            result -> {
-                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                    Uri uri = result.getData().getData();
-                    if (uri != null) {
-                        uriConsumer.accept(uri);
-                        String fileName = getFileName(uri);
-                        textView.setText(prefix + fileName);
-                    }
-                }
+    private void setupSpinners() {
+        // Use CipherInfo to populate spinners
+        ArrayAdapter<String> protocolAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedCiphers());
+        protocolSpinner.setAdapter(protocolAdapter);
+
+        // Key length, mode, and padding will be updated dynamically
+        updateKeyLengthSpinner();
+        updateModeAndPaddingSpinners();
+
+        ArrayAdapter<String> kdfAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedKdfs());
+        kdfSpinner.setAdapter(kdfAdapter);
+
+        // Add listeners to handle dynamic updates
+        protocolSpinner.setOnItemSelectedListener(new SimpleItemSelectedListener() {
+            @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                updateKeyLengthSpinner();
             }
-        );
+        });
+
+        modeSpinner.setOnItemSelectedListener(new SimpleItemSelectedListener() {
+             @Override
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                updatePaddingSpinner();
+            }
+        });
+    }
+    
+    private void updateKeyLengthSpinner() {
+        String selectedCipher = protocolSpinner.getSelectedItem().toString();
+        List<Integer> keyLengths = CipherInfo.getValidKeyLengths(selectedCipher);
+        ArrayAdapter<Integer> keyLengthAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, keyLengths);
+        keyLengthSpinner.setAdapter(keyLengthAdapter);
     }
 
-    private void checkPermissionsAndLaunchPicker(ActivityResultLauncher<Intent> launcher, String title) {
-        if (hasStoragePermissions()) {
-            launchFilePicker(launcher, title);
+    private void updateModeAndPaddingSpinners() {
+        ArrayAdapter<String> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedModes());
+        modeSpinner.setAdapter(modeAdapter);
+        updatePaddingSpinner(); // Initial padding update
+    }
+
+    private void updatePaddingSpinner() {
+        String selectedMode = modeSpinner.getSelectedItem().toString();
+        ArrayAdapter<String> paddingAdapter;
+        if (CipherInfo.isStreamMode(selectedMode)) {
+            // Stream ciphers don't need padding
+            paddingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"NoPadding"});
+            paddingSpinner.setEnabled(false);
         } else {
-            currentlyWaitingLauncher = launcher;
+            paddingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedPaddings());
+            paddingSpinner.setEnabled(true);
+        }
+        paddingSpinner.setAdapter(paddingAdapter);
+    }
+
+    private void setupSliders() {
+        // Chunk Size Slider (4KB to 16MB, powers of 2)
+        chunkSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                currentChunkSizeKb = 4 * (int) Math.pow(2, progress);
+                if (currentChunkSizeKb < 1024) {
+                    chunkSizeValueTextView.setText(String.format(Locale.US, "%d KB", currentChunkSizeKb));
+                } else {
+                    chunkSizeValueTextView.setText(String.format(Locale.US, "%d MB", currentChunkSizeKb / 1024));
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {} // No-op
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}  // No-op
+        });
+        chunkSizeValueTextView.setText("4 KB");
+
+        // Thread Count Slider (1 to max available)
+        int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors());
+        threadCountSlider.setMax(maxThreads - 1);
+        threadCountSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                currentThreadCount = progress + 1;
+                threadCountValueTextView.setText(String.format(Locale.US, "%d", currentThreadCount));
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {} // No-op
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}  // No-op
+        });
+        threadCountValueTextView.setText("1");
+    }
+
+    private void checkPermissionsAndLaunchPicker() {
+        if (hasStoragePermissions()) {
+            launchFilePicker();
+        } else {
             requestStoragePermissions();
         }
     }
@@ -163,36 +259,82 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
     }
 
-    private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
+    private void launchFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        launcher.launch(Intent.createChooser(intent, title));
-    }
-
-    @FunctionalInterface
-    interface UriConsumer {
-        void accept(Uri uri);
+        filePickerLauncher.launch(Intent.createChooser(intent, "Select a file to encrypt"));
     }
 
     private void handleEncryption() {
-        setUiEnabled(false);
-        onError("PGP encryption is not yet implemented.");
+        if (selectedFileUri == null) {
+            onError("Please select a file first.");
+            return;
+        }
+        String password = passwordInput.getText().toString();
+        if (password.isEmpty()) {
+            onError("Please enter a password.");
+            return;
+        }
+
+        try {
+            // 1. Collect all options from the UI
+            String protocol = protocolSpinner.getSelectedItem().toString();
+            int keyLength = (Integer) keyLengthSpinner.getSelectedItem();
+            String mode = modeSpinner.getSelectedItem().toString();
+            String padding = paddingSpinner.getSelectedItem().toString();
+            String kdf = kdfSpinner.getSelectedItem().toString();
+            int chunkSize = currentChunkSizeKb * 1024; // Convert KB to bytes
+            int threadCount = currentThreadCount;
+
+            // 2. Create an options bundle
+            CryptoOptions options = new CryptoOptions(protocol, keyLength, mode, padding, kdf, chunkSize, threadCount);
+            onLog("Crypto Options: " + options.toString());
+
+            // 3. Get streams and file size
+            long totalSize;
+            try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
+                totalSize = pfd.getStatSize();
+            }
+            InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+            OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
+
+            if (inputStream == null || outputStream == null) {
+                throw new Exception("Failed to open streams for the selected file.");
+            }
+
+            // 4. Set UI to busy state
+            setUiEnabled(false);
+            onLog("Starting advanced encryption...");
+
+            // 5. Call CryptoManager
+            cryptoManager.encryptAdvanced(password, inputStream, totalSize, outputStream, options);
+
+        } catch (Exception e) {
+            onError("Failed to start encryption: " + e.getMessage());
+            setUiEnabled(true);
+        }
     }
+
 
     private void setUiEnabled(boolean enabled) {
         runOnUiThread(() -> {
             encryptButton.setEnabled(enabled);
             fileSelectButton.setEnabled(enabled);
-            publicKeySelectButton.setEnabled(enabled);
-            privateKeySelectButton.setEnabled(enabled);
-            passphraseInput.setEnabled(enabled);
-            signCheckBox.setEnabled(enabled);
+            protocolSpinner.setEnabled(enabled);
+            keyLengthSpinner.setEnabled(enabled);
+            modeSpinner.setEnabled(enabled);
+            paddingSpinner.setEnabled(enabled);
+            kdfSpinner.setEnabled(enabled);
+            chunkSizeSlider.setEnabled(enabled);
+            threadCountSlider.setEnabled(enabled);
+            passwordInput.setEnabled(enabled);
 
             if (enabled) {
                 progressBar.setVisibility(View.GONE);
+                statusTextView.setVisibility(View.GONE);
             } else {
-                lastProgress = -1; // Reset progress
+                lastProgress = -1;
                 progressBar.setVisibility(View.VISIBLE);
                 progressBar.setProgress(0);
                 statusTextView.setVisibility(View.GONE);
@@ -242,7 +384,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
         return result;
     }
-    
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);

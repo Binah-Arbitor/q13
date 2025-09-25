@@ -1,98 +1,221 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    tools:context=".AdvancedEncryptionActivity">
 
-    <LinearLayout
+    <ScrollView
         android:layout_width="match_parent"
-        android.layout_height="match_parent"
-        android:layout_above="@+id/bottom_nav"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="match_parent"
+        android:layout_above="@+id/bottom_nav">
 
-        <Button
-            android:id="@+id/public_key_select_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Select Public Key" />
-            
-        <TextView
-            android:id="@+id/public_key_textview"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="No public key selected" 
-            android:padding="8dp"/>
+            android:orientation="vertical"
+            android:padding="16dp">
 
-        <Button
-            android:id="@+id/private_key_select_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Select Private Key" />
-            
-        <TextView
-            android:id="@+id/private_key_textview"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="No private key selected"
-            android:padding="8dp" />
-
-        <EditText
-            android:id="@+id/passphrase_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textPassword"
-            android:hint="Private Key Passphrase" />
-
-        <CheckBox
-            android:id="@+id/sign_checkbox"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Sign the file"/>
-
-        <Button
-            android:id="@+id/file_select_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Select File" />
-
-        <TextView
-            android:id="@+id/selected_file_textview"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="No file selected"
-            android:padding="8dp"/>
-
-        <Button
-            android:id="@+id/encrypt_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Encrypt" />
-
-        <ProgressBar
-            android:id="@+id/progress_bar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"/>
-
-        <ScrollView
-            android:id="@+id/console_scrollview"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="8dp"
-            android:background="#f0f0f0">
+            <!-- Cipher Settings -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cipher Settings"
+                android:textAppearance="?android:attr/textAppearanceMedium"
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/console_textview"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Protocol" />
+            <Spinner
+                android:id="@+id/protocol_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Key Length" />
+            <Spinner
+                android:id="@+id/key_length_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Mode" />
+            <Spinner
+                android:id="@+id/mode_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Padding" />
+            <Spinner
+                android:id="@+id/padding_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <!-- Key Derivation Settings -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Key Derivation"
+                android:textAppearance="?android:attr/textAppearanceMedium"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Key Derivation Function (KDF)" />
+            <Spinner
+                android:id="@+id/kdf_spinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+                
+            <EditText
+                android:id="@+id/password_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:padding="8dp"
-                android:fontFamily="monospace"/>
-        </ScrollView>
+                android:inputType="textPassword"
+                android:hint="Password" />
 
-    </LinearLayout>
+
+            <!-- Performance Settings -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Performance"
+                android:textAppearance="?android:attr/textAppearanceMedium"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Chunk Size: " />
+                <TextView
+                    android:id="@+id/chunk_size_value_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="4 KB" />
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/chunk_size_slider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="12"
+                android:progress="0" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Threads: " />
+                <TextView
+                    android:id="@+id/thread_count_value_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1" />
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/thread_count_slider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="15"
+                android:progress="0" />
+
+            <!-- File I/O and Actions -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"/>
+
+            <Button
+                android:id="@+id/file_select_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Select File" />
+
+            <TextView
+                android:id="@+id/selected_file_textview"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No file selected"
+                android:padding="8dp"/>
+
+            <Button
+                android:id="@+id/encrypt_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Encrypt" />
+
+            <!-- Status and Console -->
+            <FrameLayout
+                android:id="@+id/status_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+        
+                <ProgressBar
+                    android:id="@+id/progress_bar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/status_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    tools:text="✓ SUCCESS" />
+            </FrameLayout>
+
+            <ScrollView
+                android:id="@+id/console_scrollview"
+                android:layout_width="match_parent"
+                android:layout_height="150dp"
+                android:layout_marginTop="8dp"
+                android:background="#f0f0f0">
+
+                <TextView
+                    android:id="@+id/console_textview"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:fontFamily="monospace"/>
+            </ScrollView>
+
+        </LinearLayout>
+    </ScrollView>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"

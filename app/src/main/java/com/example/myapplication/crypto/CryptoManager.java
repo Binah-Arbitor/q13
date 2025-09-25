@@ -33,19 +33,24 @@ public class CryptoManager {
     private final CryptoListener listener;
     private final Context context;
 
-    // --- Algorithm and Parameter Constants (for SIMPLE mode) ---
+    private static final String MAC_ALGORITHM = "HmacSHA256";
+    private static final String PROVIDER = "BC";
+    private static final int SALT_LENGTH_BYTES = 16;
+    private static final int IV_LENGTH_BYTES = 16;
+    private static final int MAC_TAG_LENGTH_BYTES = 32;
+    private static final int SIMPLE_KDF_ITERATION_COUNT = 65536;
+
+    // Constants for simple mode
     private static final String SIMPLE_KEY_DERIVATION_ALGORITHM = "PBKDF2WithHmacSHA256";
     private static final String SIMPLE_ENCRYPTION_ALGORITHM = "AES";
     private static final String SIMPLE_CIPHER_TRANSFORMATION = "AES/CTR/NoPadding";
-    private static final String MAC_ALGORITHM = "HmacSHA256"; // Common for both
-    private static final String PROVIDER = "BC"; // Common for both
-
-    private static final int SALT_LENGTH_BYTES = 16;
-    private static final int IV_LENGTH_BYTES = 16; // AES block size
     private static final int SIMPLE_KEY_LENGTH_BITS = 256;
-    private static final int SIMPLE_KDF_ITERATION_COUNT = 65536;
-    private static final int MAC_TAG_LENGTH_BYTES = 32; // SHA-256 output size
-    private static final int SIMPLE_CHUNK_SIZE = 64 * 1024; // 64 KB
+    private static final int SIMPLE_CHUNK_SIZE = 64 * 1024;
+
+    public interface HeaderCallback {
+        void onHeaderRead(FileHeader header);
+        void onError(Exception e);
+    }
 
     public CryptoManager(CryptoListener listener, Context context) {
         this.listener = listener;
@@ -53,30 +58,6 @@ public class CryptoManager {
     }
 
     // --- PUBLIC API ---
-
-    public void encrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean multithreaded) {
-        new Thread(() -> {
-            try {
-                streamEncrypt(password, inputStream, totalSize, outputStream);
-                listener.onSuccess("Encryption successful.");
-            } catch (Exception e) {
-                e.printStackTrace();
-                listener.onError("Encryption failed: " + e.getMessage());
-            }
-        }).start();
-    }
-
-    public void decrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean multithreaded) {
-        new Thread(() -> {
-            try {
-                streamDecrypt(password, inputStream, totalSize, outputStream);
-                listener.onSuccess("Decryption and verification successful.");
-            } catch (Exception e) {
-                e.printStackTrace();
-                listener.onError("Decryption failed: " + e.getMessage());
-            }
-        }).start();
-    }
 
     public void encryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream, CryptoOptions options) {
         new Thread(() -> {
@@ -89,32 +70,134 @@ public class CryptoManager {
             }
         }).start();
     }
+    
+    public void decryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream) {
+        new Thread(() -> {
+            try {
+                streamDecryptAdvanced(password, inputStream, totalSize, outputStream);
+                listener.onSuccess("Advanced decryption and verification successful.");
+            } catch (Exception e) {
+                e.printStackTrace();
+                listener.onError("Advanced decryption failed: " + e.getMessage());
+            }
+        }).start();
+    }
+    
+    public void readHeader(InputStream in, HeaderCallback callback) {
+        new Thread(() -> {
+            try {
+                FileHeader header = readHeaderInternal(in);
+                callback.onHeaderRead(header);
+            } catch (Exception e) {
+                callback.onError(e);
+            }
+        }).start();
+    }
 
-    // --- ADVANCED ENCRYPTION IMPLEMENTATION ---
+    // --- ADVANCED DECRYPTION ---
+
+    private void streamDecryptAdvanced(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
+        File tempCiphertextData = null;
+        try {
+            // 1. Read Header to get options
+            listener.onLog("Reading file header...");
+            FileHeader header = readHeaderInternal(in);
+            CryptoOptions options = header.getOptions();
+            listener.onLog("Header found: " + options.toString());
+
+            // 2. Read Salt and IV
+            byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
+            byte[] iv = readBytes(in, IV_LENGTH_BYTES);
+            listener.onLog("Salt and IV read.");
+
+            // 3. Derive keys using parameters from header
+            SecretKeySpec[] keys = deriveKeysAdvanced(password, salt, options);
+            SecretKeySpec encKey = keys[0];
+            SecretKeySpec macKey = keys[1];
+
+            // 4. Stream ciphertext + HMAC to a temp file
+            listener.onLog("Buffering encrypted content to temporary file...");
+            tempCiphertextData = File.createTempFile("dec_adv", ".tmp", context.getCacheDir());
+            long ciphertextAndMacSize = 0;
+            try (FileOutputStream tempOut = new FileOutputStream(tempCiphertextData)) {
+                byte[] buffer = new byte[options.getChunkSize()];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    tempOut.write(buffer, 0, bytesRead);
+                    ciphertextAndMacSize += bytesRead;
+                }
+            }
+
+            if (ciphertextAndMacSize < MAC_TAG_LENGTH_BYTES) {
+                throw new SecurityException("Invalid data: too short to contain HMAC tag.");
+            }
+
+            // 5. Verify HMAC
+            listener.onLog("Verifying file integrity (HMAC)...");
+            long ciphertext_size = ciphertextAndMacSize - MAC_TAG_LENGTH_BYTES;
+            byte[] calculatedMac = calculateHmac(macKey, tempCiphertextData, 0, ciphertext_size, options.getChunkSize());
+            byte[] storedMac = readFromFile(tempCiphertextData, ciphertext_size, MAC_TAG_LENGTH_BYTES);
+
+            if (!MessageDigest.isEqual(calculatedMac, storedMac)) {
+                throw new SecurityException("HMAC validation failed: File is corrupt or has been tampered with.");
+            }
+            listener.onLog("HMAC verification successful.");
+
+            // 6. Decrypt from temp file
+            listener.onLog("Decrypting data...");
+            Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
+            cipher.init(Cipher.DECRYPT_MODE, encKey, new IvParameterSpec(iv));
+
+            try (FileInputStream tempIn = new FileInputStream(tempCiphertextData)) {
+                try (CipherInputStream cipherIn = new CipherInputStream(tempIn, cipher)) {
+                    byte[] buffer = new byte[options.getChunkSize()];
+                    int bytesRead;
+                    long processedBytes = 0;
+                    while ((bytesRead = cipherIn.read(buffer)) != -1) {
+                        out.write(buffer, 0, bytesRead);
+                        processedBytes += bytesRead;
+                        reportProgress(processedBytes, ciphertext_size);
+                    }
+                }
+            }
+        } finally {
+             if (tempCiphertextData != null && tempCiphertextData.exists()) {
+                tempCiphertextData.delete();
+            }
+        }
+    }
+    
+    private FileHeader readHeaderInternal(InputStream in) throws Exception {
+        byte[] lengthBytes = readBytes(in, 4);
+        int headerLength = bytesToInt(lengthBytes);
+        if(headerLength <= 0 || headerLength > 1024 * 1024) { // Sanity check
+            throw new JSONException("Invalid or corrupt header length: " + headerLength);
+        }
+        byte[] jsonBytes = readBytes(in, headerLength);
+        String jsonString = new String(jsonBytes, StandardCharsets.UTF_8);
+        return FileHeader.fromJson(jsonString);
+    }
+
+    // --- UNMODIFIED METHODS (encryptAdvanced, simple encrypt/decrypt, helpers) ... ---
+
     private void streamEncryptAdvanced(String password, InputStream in, long totalSize, OutputStream out, CryptoOptions options) throws Exception {
         File tempEncryptedFile = null;
         try {
-            // 1. Create and write header
             FileHeader header = new FileHeader(options);
             byte[] headerBytes = header.toBytes();
             out.write(headerBytes);
             listener.onLog("File header written (" + headerBytes.length + " bytes).");
 
-            // 2. Derive keys from password using advanced options
             byte[] salt = generateRandom(SALT_LENGTH_BYTES);
             SecretKeySpec[] keys = deriveKeysAdvanced(password, salt, options);
             SecretKeySpec encKey = keys[0];
             SecretKeySpec macKey = keys[1];
 
-            // 3. Generate IV
             byte[] iv = generateRandom(IV_LENGTH_BYTES);
-
-            // 4. Write Salt and IV to the final output stream
             out.write(salt);
             out.write(iv);
             listener.onLog("Salt and IV written.");
 
-            // 5. Encrypt data to a temporary file
             listener.onLog("Encrypting data to temporary file...");
             tempEncryptedFile = File.createTempFile("enc_adv", ".tmp", context.getCacheDir());
             try (FileOutputStream tempOut = new FileOutputStream(tempEncryptedFile)) {
@@ -140,12 +223,10 @@ public class CryptoManager {
             }
             listener.onLog("Temporary file encryption complete.");
 
-            // 6. Calculate HMAC of the encrypted temporary file
             listener.onLog("Calculating HMAC tag...");
-            byte[] hmacTag = calculateHmac(macKey, tempEncryptedFile, options.getChunkSize());
+            byte[] hmacTag = calculateHmac(macKey, tempEncryptedFile, 0, tempEncryptedFile.length(), options.getChunkSize());
             listener.onLog("HMAC tag calculated.");
 
-            // 7. Stream the encrypted data from temp file to the final output stream
             try (FileInputStream tempIn = new FileInputStream(tempEncryptedFile)) {
                 byte[] buffer = new byte[options.getChunkSize()];
                 int bytesRead;
@@ -154,7 +235,6 @@ public class CryptoManager {
                 }
             }
 
-            // 8. Write HMAC tag to the final output stream
             out.write(hmacTag);
             listener.onLog("Encrypted data and HMAC tag written to final output.");
 
@@ -181,20 +261,7 @@ public class CryptoManager {
         listener.onLog("Key derivation complete.");
         return new SecretKeySpec[]{encKey, macKey};
     }
-
-    // --- SIMPLE STREAM-BASED IMPLEMENTATIONS (Unchanged) ---
-    private void streamEncrypt(String password, InputStream in, long totalSize, OutputStream out) throws Exception { 
-        // ... (existing simple encryption code) 
-    }
-    private void streamDecrypt(String password, InputStream in, long totalSize, OutputStream out) throws Exception { 
-        // ... (existing simple decryption code) 
-    }
-
-    // --- HELPER METHODS ---
-    private byte[] calculateHmac(SecretKeySpec macKey, File file, int chunkSize) throws Exception {
-        return calculateHmac(macKey, file, 0, file.length(), chunkSize);
-    }
-
+    
     private byte[] calculateHmac(SecretKeySpec macKey, File file, long offset, long length, int chunkSize) throws Exception {
         Mac mac = Mac.getInstance(MAC_ALGORITHM);
         mac.init(macKey);
@@ -212,7 +279,7 @@ public class CryptoManager {
         }
         return mac.doFinal();
     }
-
+    
     private byte[] readFromFile(File file, long offset, int length) throws Exception {
         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
             raf.seek(offset);
@@ -223,10 +290,6 @@ public class CryptoManager {
             }
             return data;
         }
-    }
-    
-    private SecretKeySpec[] deriveKeysSimple(String password, byte[] salt) throws Exception {
-        // ... (existing simple key derivation code)
     }
 
     private byte[] generateRandom(int length) {
@@ -242,6 +305,13 @@ public class CryptoManager {
             throw new Exception("Could not read required bytes from stream. Expected " + length + ", got " + bytesRead);
         }
         return bytes;
+    }
+    
+    private int bytesToInt(byte[] bytes) {
+        return ((bytes[0] & 0xFF) << 24) |
+               ((bytes[1] & 0xFF) << 16) |
+               ((bytes[2] & 0xFF) << 8)  |
+               ((bytes[3] & 0xFF));
     }
 
     private void reportProgress(long processed, long total) {

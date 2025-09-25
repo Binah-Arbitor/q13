@@ -54,7 +54,7 @@
         android:layout_height="wrap_content"
         android:layout_below="@id/selected_file_textview"
         android:layout_marginTop="16dp"
-        android:text="Encrypt/Decrypt File" />
+        android:text="Encrypt" />
 
     <!-- FrameLayout to hold both ProgressBar and status TextView -->
     <FrameLayout

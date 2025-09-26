@@ -16,6 +16,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.ActionBar;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
@@ -50,7 +51,11 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_decryption);
-        getSupportActionBar().setTitle("Advanced Decryption");
+        
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setTitle("Advanced Decryption");
+        }
 
         cryptoManager = new CryptoManager(this, getApplicationContext());
 
@@ -101,7 +106,9 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         String fileName = getFileName(uri);
         selectedFileTextView.setText("Selected file: " + fileName);
         onLog("File selected: " + fileName);
-        headerInfoLayout.setVisibility(View.GONE); // Hide old info
+        if (headerInfoLayout != null) {
+            headerInfoLayout.setVisibility(View.GONE); // Hide old info
+        }
 
         // Try to read the header
         try (InputStream inputStream = getContentResolver().openInputStream(selectedFileUri)) {
@@ -130,7 +137,9 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         infoMode.setText("Mode: " + header.getOptions().getMode());
         infoPadding.setText("Padding: " + header.getOptions().getPadding());
         infoKdf.setText("KDF: " + header.getOptions().getKdf());
-        headerInfoLayout.setVisibility(View.VISIBLE);
+        if (headerInfoLayout != null) {
+            headerInfoLayout.setVisibility(View.VISIBLE);
+        }
     }
 
     private void handleDecryption() {
@@ -174,17 +183,19 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
 
     private void setUiEnabled(boolean enabled) {
         runOnUiThread(() -> {
-            decryptButton.setEnabled(enabled);
-            fileSelectButton.setEnabled(enabled);
-            passwordInput.setEnabled(enabled);
+            if (decryptButton != null) decryptButton.setEnabled(enabled);
+            if (fileSelectButton != null) fileSelectButton.setEnabled(enabled);
+            if (passwordInput != null) passwordInput.setEnabled(enabled);
 
             if (enabled) {
-                progressBar.setVisibility(View.GONE);
+                if (progressBar != null) progressBar.setVisibility(View.GONE);
             } else {
                 lastProgress = -1;
-                progressBar.setVisibility(View.VISIBLE);
-                progressBar.setProgress(0);
-                statusTextView.setVisibility(View.GONE);
+                if (progressBar != null) {
+                    progressBar.setVisibility(View.VISIBLE);
+                    progressBar.setProgress(0);
+                }
+                if (statusTextView != null) statusTextView.setVisibility(View.GONE);
             }
         });
     }
@@ -198,7 +209,7 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
 
     private String getFileName(Uri uri) {
         String result = null;
-        if ("content".equals(uri.getScheme())) {
+        if (uri != null && "content".equals(uri.getScheme())) {
             try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
@@ -206,7 +217,7 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
                 }
             }
         }
-        if (result == null) {
+        if (result == null && uri != null) {
             result = uri.getPath();
             if (result != null) {
                 int cut = result.lastIndexOf('/');
@@ -217,6 +228,7 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupBottomNav() {
+        if (bottomNav == null) return;
         bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
@@ -224,18 +236,19 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
                 // Already here
             } else if (itemId == R.id.nav_advanced_encrypt) {
                 Intent intent = new Intent(this, AdvancedEncryptionActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
                 startActivity(intent);
+                overridePendingTransition(0, 0);
             }
             return true;
         });
     }
 
     // CryptoListener Implementation
-    @Override public void onProgress(int progress) { runOnUiThread(() -> progressBar.setProgress(progress)); lastProgress = progress; }
+    @Override public void onProgress(int progress) { runOnUiThread(() -> { if (progressBar != null) progressBar.setProgress(progress); }); lastProgress = progress; }
     @Override public int getLastReportedProgress() { return lastProgress; }
-    @Override public void onSuccess(String message) { runOnUiThread(() -> { setUiEnabled(true); statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✓ SUCCESS"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green)); consoleTextView.append("\n[SUCCESS] " + message + "\n"); scrollToBottom(); Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show(); }); }
-    @Override public void onError(String errorMessage) { runOnUiThread(() -> { setUiEnabled(true); statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✗ ERROR"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red)); consoleTextView.append("\n[ERROR] " + errorMessage + "\n"); scrollToBottom(); Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show(); }); }
-    @Override public void onLog(String logMessage) { runOnUiThread(() -> { consoleTextView.append(logMessage + "\n"); scrollToBottom(); }); }
-    private void scrollToBottom() { consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN)); }
+    @Override public void onSuccess(String message) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✓ SUCCESS"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green)); } if (consoleTextView != null) consoleTextView.append("\n[SUCCESS] " + message + "\n"); scrollToBottom(); Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show(); }); }
+    @Override public void onError(String errorMessage) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✗ ERROR"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red)); } if(consoleTextView != null) consoleTextView.append("\n[ERROR] " + errorMessage + "\n"); scrollToBottom(); Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show(); }); }
+    @Override public void onLog(String logMessage) { runOnUiThread(() -> { if(consoleTextView != null) consoleTextView.append(logMessage + "\n"); scrollToBottom(); }); }
+    private void scrollToBottom() { if(consoleScrollView != null) { consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN)); } }
 }

@@ -295,8 +295,9 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
                 // Already here
             } else if (itemId == R.id.nav_advanced_decrypt) {
                 Intent intent = new Intent(this, AdvancedDecryptionActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
                 startActivity(intent);
+                overridePendingTransition(0, 0);
             }
             return true;
         });

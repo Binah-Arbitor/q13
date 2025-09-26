@@ -24,22 +24,30 @@ public class FileHeader {
     }
 
     /**
-     * Serializes the header into a byte array for writing to a file.
-     * @return A byte array representing the full header (length + JSON).
-     * @throws JSONException If JSON serialization fails.
+     * Serializes the header's options into a JSON string.
+     * @return A string in JSON format representing the crypto options.
+     * @throws JSONException if JSON creation fails.
      */
-    public byte[] toBytes() throws JSONException {
+    public String toJson() throws JSONException {
         JSONObject json = new JSONObject();
         json.put("protocol", options.getProtocol());
         json.put("keyLength", options.getKeyLength());
         json.put("mode", options.getMode());
         json.put("padding", options.getPadding());
         json.put("kdf", options.getKdf());
-        // Chunk size and thread count are not needed for decryption but stored for completeness
         json.put("chunkSize", options.getChunkSize());
         json.put("threadCount", options.getThreadCount());
+        return json.toString();
+    }
 
-        byte[] jsonBytes = json.toString().getBytes(StandardCharsets.UTF_8);
+    /**
+     * Serializes the header into a byte array for writing to a file.
+     * The format is a 4-byte length prefix followed by the JSON data.
+     * @return A byte array representing the full header (length + JSON).
+     * @throws JSONException If JSON serialization fails.
+     */
+    public byte[] toBytes() throws JSONException {
+        byte[] jsonBytes = toJson().getBytes(StandardCharsets.UTF_8);
         byte[] headerBytes = new byte[4 + jsonBytes.length];
 
         // Prepend the 4-byte length header

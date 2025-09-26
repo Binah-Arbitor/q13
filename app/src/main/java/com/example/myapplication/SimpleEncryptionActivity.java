@@ -170,17 +170,16 @@ public class SimpleEncryptionActivity extends BaseActivity implements CryptoList
 
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_simple_encrypt);
-        bottomNav.setOnNavigationItemSelectedListener(item -> {
+        bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_simple_encrypt) {
-                return true; // Do nothing, already on this screen
+                // Do nothing, already on this screen
             } else if (itemId == R.id.nav_simple_decrypt) {
                 Intent intent = new Intent(this, SimpleDecryptionActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 startActivity(intent);
-                return true;
             }
-            return false;
+            return true;
         });
     }
 

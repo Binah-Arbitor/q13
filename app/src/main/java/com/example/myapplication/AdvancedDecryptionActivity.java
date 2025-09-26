@@ -1,16 +1,11 @@
 package com.example.myapplication;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -21,8 +16,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
@@ -32,17 +25,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-public class AdvancedDecryptionActivity extends AppCompatActivity implements CryptoListener {
-
-    // Permissions
-    private static final String[] STORAGE_PERMISSIONS;
-    static {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE};
-        } else {
-            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
-        }
-    }
+public class AdvancedDecryptionActivity extends BaseActivity implements CryptoListener {
 
     // UI Elements
     private Button fileSelectButton, decryptButton;
@@ -62,7 +45,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     private int lastProgress = -1;
 
     private ActivityResultLauncher<Intent> filePickerLauncher;
-    private ActivityResultLauncher<String[]> requestPermissionsLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,8 +58,13 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         setupLaunchers();
         setupBottomNav();
 
-        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker());
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndExecute(this::launchFilePicker));
         decryptButton.setOnClickListener(v -> handleDecryption());
+    }
+
+    @Override
+    protected boolean isActivityForAdvancedMode() {
+        return true;
     }
 
     private void initializeViews() {
@@ -104,19 +91,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             result -> {
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     onFileSelected(result.getData().getData());
-                }
-            }
-        );
-
-        requestPermissionsLauncher = registerForActivityResult(
-            new ActivityResultContracts.RequestMultiplePermissions(),
-            permissions -> {
-                boolean allGranted = permissions.values().stream().allMatch(g -> g);
-                if (allGranted) {
-                    onLog("Storage permissions granted.");
-                    launchFilePicker(); // Permissions granted, now launch the picker
-                } else {
-                    Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
                 }
             }
         );
@@ -215,18 +189,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         });
     }
 
-    private void checkPermissionsAndLaunchPicker() {
-        if (!hasStoragePermissions()) {
-            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
-        } else {
-            launchFilePicker();
-        }
-    }
-
-    private boolean hasStoragePermissions() {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-    }
-
     private void launchFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
@@ -252,21 +214,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             }
         }
         return result != null ? result : "Unknown";
-    }
-    
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.main_menu, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == R.id.action_settings) {
-            startActivity(new Intent(this, SettingsActivity.class));
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
     }
 
     private void setupBottomNav() {

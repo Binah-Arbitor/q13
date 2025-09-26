@@ -1,16 +1,11 @@
 package com.example.myapplication;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -24,8 +19,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
@@ -34,17 +27,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-public class SimpleDecryptionActivity extends AppCompatActivity implements CryptoListener {
-
-    // Permissions
-    private static final String[] STORAGE_PERMISSIONS;
-    static {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE};
-        } else {
-            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
-        }
-    }
+public class SimpleDecryptionActivity extends BaseActivity implements CryptoListener {
 
     private Spinner decryptionModeSpinner, threadModeSpinner;
     private EditText passwordInput;
@@ -63,9 +46,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     private ActivityResultLauncher<Intent> fileToDecryptPickerLauncher;
     private ActivityResultLauncher<Intent> privateKeyFilePickerLauncher;
     private ActivityResultLauncher<Intent> signerPublicKeyFilePickerLauncher;
-    private ActivityResultLauncher<String[]> requestPermissionsLauncher;
-
-    private Runnable afterPermissionGranted;
 
     private enum DecryptionMode { SIMPLE_AES, PGP }
     private DecryptionMode currentMode = DecryptionMode.SIMPLE_AES;
@@ -84,13 +64,18 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         setupSpinners();
         setupBottomNav();
 
-        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(() -> launchFilePicker(fileToDecryptPickerLauncher, "Select File to Decrypt")));
-        privateKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(() -> launchFilePicker(privateKeyFilePickerLauncher, "Select Private Key")));
-        signerPublicKeySelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker(() -> launchFilePicker(signerPublicKeyFilePickerLauncher, "Select Signer Public Key")));
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndExecute(() -> launchFilePicker(fileToDecryptPickerLauncher, "Select File to Decrypt")));
+        privateKeySelectButton.setOnClickListener(v -> checkPermissionsAndExecute(() -> launchFilePicker(privateKeyFilePickerLauncher, "Select Private Key")));
+        signerPublicKeySelectButton.setOnClickListener(v -> checkPermissionsAndExecute(() -> launchFilePicker(signerPublicKeyFilePickerLauncher, "Select Signer Public Key")));
 
         decryptButton.setOnClickListener(v -> handleDecryption());
 
         updateUiForMode(currentMode);
+    }
+
+    @Override
+    protected boolean isActivityForAdvancedMode() {
+        return false;
     }
 
     private void initializeViews() {
@@ -116,22 +101,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         fileToDecryptPickerLauncher = createAndRegisterLauncher(selectedFileTextView, "File: ", uri -> selectedFileUri = uri);
         privateKeyFilePickerLauncher = createAndRegisterLauncher(privateKeyTextView, "Private Key: ", uri -> privateKeyUri = uri);
         signerPublicKeyFilePickerLauncher = createAndRegisterLauncher(signerPublicKeyTextView, "Signer Key: ", uri -> signerPublicKeyUri = uri);
-
-        requestPermissionsLauncher = registerForActivityResult(
-            new ActivityResultContracts.RequestMultiplePermissions(),
-            permissions -> {
-                boolean allGranted = permissions.values().stream().allMatch(p -> p);
-                if (allGranted) {
-                    onLog("Storage permissions granted.");
-                    if (afterPermissionGranted != null) {
-                        afterPermissionGranted.run();
-                        afterPermissionGranted = null;
-                    }
-                } else {
-                    Toast.makeText(this, "Storage permissions are required to select files.", Toast.LENGTH_LONG).show();
-                }
-            }
-        );
     }
 
     private ActivityResultLauncher<Intent> createAndRegisterLauncher(TextView textView, String prefix, UriConsumer uriConsumer) {
@@ -148,24 +117,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
                 }
             }
         );
-    }
-
-    private void checkPermissionsAndLaunchPicker(Runnable action) {
-        if (hasStoragePermissions()) {
-            action.run();
-        } else {
-            afterPermissionGranted = action;
-            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
-        }
-    }
-
-    private boolean hasStoragePermissions() {
-        for (String permission : STORAGE_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
@@ -227,6 +178,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
         } catch (Exception e) {
             onError("Decryption failed: " + e.getMessage());
+            setUiEnabled(true); // Re-enable UI on failure to start
         }
     }
     
@@ -314,7 +266,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
     private String getFileName(Uri uri) {
         String result = null;
-        if (uri.getScheme().equals("content")) {
+        if ("content".equals(uri.getScheme())) {
             try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
@@ -337,22 +289,8 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         }
         return result;
     }
-    
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.main_menu, menu);
-        return true;
-    }
 
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == R.id.action_settings) {
-            startActivity(new Intent(this, SettingsActivity.class));
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
+    // CryptoListener Implementation
     @Override
     public void onProgress(int progress) {
         runOnUiThread(() -> {

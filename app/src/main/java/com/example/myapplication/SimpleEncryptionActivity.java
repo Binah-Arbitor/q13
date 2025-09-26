@@ -1,16 +1,11 @@
 package com.example.myapplication;
 
-import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -23,8 +18,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
@@ -33,17 +26,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-public class SimpleEncryptionActivity extends AppCompatActivity implements CryptoListener {
-
-    // Permissions
-    private static final String[] STORAGE_PERMISSIONS;
-    static {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE};
-        } else {
-            STORAGE_PERMISSIONS = new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
-        }
-    }
+public class SimpleEncryptionActivity extends BaseActivity implements CryptoListener {
 
     private Spinner modeSpinner;
     private EditText passwordInput;
@@ -60,7 +43,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private int lastProgress = -1;
 
     private ActivityResultLauncher<Intent> filePickerLauncher;
-    private ActivityResultLauncher<String[]> requestPermissionsLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,8 +57,13 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         setupSpinner();
         setupBottomNav();
 
-        fileSelectButton.setOnClickListener(v -> checkPermissionsAndLaunchPicker());
+        fileSelectButton.setOnClickListener(v -> checkPermissionsAndExecute(this::launchFilePicker));
         encryptButton.setOnClickListener(v -> handleEncryption());
+    }
+
+    @Override
+    protected boolean isActivityForAdvancedMode() {
+        return false;
     }
 
     private void initializeViews() {
@@ -104,36 +91,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                 }
             }
         );
-
-        requestPermissionsLauncher = registerForActivityResult(
-            new ActivityResultContracts.RequestMultiplePermissions(),
-            permissions -> {
-                boolean allGranted = permissions.values().stream().allMatch(p -> p);
-                if (allGranted) {
-                    onLog("Storage permissions granted.");
-                    launchFilePicker(); // Launch picker after getting permission
-                } else {
-                    Toast.makeText(this, "Storage permissions are required to select a file.", Toast.LENGTH_LONG).show();
-                }
-            }
-        );
-    }
-
-    private void checkPermissionsAndLaunchPicker() {
-        if (!hasStoragePermissions()) {
-            requestPermissionsLauncher.launch(STORAGE_PERMISSIONS);
-        } else {
-            launchFilePicker();
-        }
-    }
-
-    private boolean hasStoragePermissions() {
-        for (String permission : STORAGE_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private void launchFilePicker() {
@@ -175,6 +132,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
         } catch (Exception e) {
             onError("Encryption failed: " + e.getMessage());
+            setUiEnabled(true); // Re-enable UI on failure to start
         }
     }
 
@@ -228,7 +186,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
     private String getFileName(Uri uri) {
         String result = null;
-        if (uri.getScheme().equals("content")) {
+        if ("content".equals(uri.getScheme())) {
             try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
@@ -248,22 +206,8 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
         return result;
     }
-    
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.main_menu, menu);
-        return true;
-    }
 
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == R.id.action_settings) {
-            startActivity(new Intent(this, SettingsActivity.class));
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
+    // CryptoListener Implementation
     @Override
     public void onProgress(int progress) {
         runOnUiThread(() -> {

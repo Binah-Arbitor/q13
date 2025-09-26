@@ -176,8 +176,9 @@ public class SimpleEncryptionActivity extends BaseActivity implements CryptoList
                 // Do nothing, already on this screen
             } else if (itemId == R.id.nav_simple_decrypt) {
                 Intent intent = new Intent(this, SimpleDecryptionActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
                 startActivity(intent);
+                overridePendingTransition(0, 0);
             }
             return true;
         });

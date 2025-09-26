@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.AdapterView;
@@ -23,9 +22,6 @@ import androidx.core.content.ContextCompat;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-
-import java.io.InputStream;
-import java.io.OutputStream;
 
 public class SimpleDecryptionActivity extends BaseActivity implements CryptoListener {
 
@@ -110,10 +106,13 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     Uri uri = result.getData().getData();
                     if (uri != null) {
-                        // Persist read and write permissions for the selected file URI
                         final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
-                        getContentResolver().takePersistableUriPermission(uri, takeFlags);
-
+                        try {
+                             getContentResolver().takePersistableUriPermission(uri, takeFlags);
+                        } catch (SecurityException e) {
+                            e.printStackTrace();
+                            onLog("Could not get persistent permissions. May fail on reboot.");
+                        }
                         uriConsumer.accept(uri);
                         String fileName = getFileName(uri);
                         textView.setText(prefix + fileName);
@@ -124,7 +123,6 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
     }
 
     private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
-        // Use ACTION_OPEN_DOCUMENT to get a persistent URI
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
@@ -144,13 +142,10 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
         
         setUiEnabled(false);
 
-        switch (currentMode) {
-            case SIMPLE_AES:
-                handleSimpleAesDecryption();
-                break;
-            case PGP:
-                handlePgpDecryption();
-                break;
+        if (currentMode == DecryptionMode.SIMPLE_AES) {
+            handleSimpleAesDecryption();
+        } else {
+            handlePgpDecryption();
         }
     }
     
@@ -167,28 +162,16 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
         onLog("Starting Simple AES decryption in " + modeLog + " mode...");
         
         try {
-             long totalSize;
-            try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
-                totalSize = pfd.getStatSize();
-            }
-
-            InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-            // Open with "wt" to truncate and write. This requires persistent write permission.
-            OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
-
-            if (inputStream == null || outputStream == null) {
-                throw new Exception("Failed to open streams for the selected file.");
-            }
-
-            cryptoManager.decrypt(password, inputStream, totalSize, outputStream, useMultithreading);
-
+            // The CryptoManager now handles all file operations directly via URI
+            cryptoManager.decrypt(password, selectedFileUri, useMultithreading);
         } catch (Exception e) {
             onError("Decryption failed: " + e.getMessage());
-            setUiEnabled(true); // Re-enable UI on failure to start
+            setUiEnabled(true); // Re-enable UI on failure
         }
     }
     
     private void handlePgpDecryption() {
+        setUiEnabled(true);
         onError("PGP decryption is not yet implemented.");
     }
 
@@ -245,6 +228,7 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
 
             if (enabled) {
                 progressBar.setVisibility(View.GONE);
+                statusTextView.setVisibility(View.GONE);
             } else {
                 lastProgress = -1; // Reset progress
                 progressBar.setVisibility(View.VISIBLE);
@@ -259,7 +243,7 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_simple_decrypt) {
-                // Do nothing, already on this screen
+                // Do nothing
             } else if (itemId == R.id.nav_simple_encrypt) {
                 Intent intent = new Intent(this, SimpleEncryptionActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
@@ -272,7 +256,7 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
 
     private String getFileName(Uri uri) {
         String result = null;
-        if ("content".equals(uri.getScheme())) {
+        if (uri != null && "content".equals(uri.getScheme())) {
             try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
@@ -282,18 +266,18 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
                 }
             } catch (Exception e) {
                 onLog("Error getting file name: " + e.getMessage());
-                return null;
+                return "Unknown File";
             }
         }
-        if (result == null) {
+        if (result == null && uri != null) {
             result = uri.getPath();
-            if(result == null) return "Unknown";
+            if(result == null) return "Unknown File";
             int cut = result.lastIndexOf('/');
             if (cut != -1) {
                 result = result.substring(cut + 1);
             }
         }
-        return result;
+        return result == null ? "Unknown File" : result;
     }
 
     // CryptoListener Implementation
@@ -328,7 +312,8 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
         runOnUiThread(() -> {
             setUiEnabled(true);
             statusTextView.setVisibility(View.VISIBLE);
-            statusTextView.setText("✗ ERROR");
+            statusTextView.setText("✗ ERROR
+");
             statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red));
             consoleTextView.append("\n[ERROR] " + errorMessage + "\n");
             scrollToBottom();

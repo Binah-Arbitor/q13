@@ -1,6 +1,7 @@
 package com.example.myapplication.crypto;
 
 import android.content.Context;
+import android.net.Uri;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.json.JSONException;
 
@@ -16,7 +17,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.RandomAccessFile;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -35,7 +36,6 @@ public class CryptoManager {
     private static final String MAC_ALGORITHM = "HmacSHA256";
     private static final String PROVIDER = "BC";
     private static final int SALT_LENGTH_BYTES = 16;
-    private static final int IV_LENGTH_BYTES = 16;
     private static final int MAC_TAG_LENGTH_BYTES = 32;
     private static final int KDF_ITERATION_COUNT = 65536;
 
@@ -51,76 +51,100 @@ public class CryptoManager {
 
     // --- PUBLIC API ---
 
-    /**
-     * Encrypts a stream using predefined "simple" settings (AES-256-CTR) with a file header.
-     */
-    public void encrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean useMultithreading) {
+    public void encrypt(String password, Uri fileUri, boolean useMultithreading) {
         new Thread(() -> {
+            File tempFile = null;
             try {
-                // Define the "Simple" mode options, now using the advanced format.
+                // Define the "Simple" mode options
                 CryptoOptions simpleOptions = new CryptoOptions(
-                    "AES",
-                    256,
-                    "CTR",
-                    "NoPadding",
-                    "PBKDF2WithHmacSHA256",
-                    64 * 1024, // 64KB chunk size
+                    "AES", 256, "CTR", "NoPadding", "PBKDF2WithHmacSHA256",
+                    64 * 1024, // 64KB chunk
                     useMultithreading ? Math.max(1, Runtime.getRuntime().availableProcessors()) : 1
                 );
-                streamEncryptAdvanced(password, inputStream, totalSize, outputStream, simpleOptions);
+
+                // Create a temporary file to write encrypted data to
+                tempFile = File.createTempFile("enc", ".tmp", context.getCacheDir());
+
+                // Perform encryption from source URI to temp file
+                try (InputStream in = context.getContentResolver().openInputStream(fileUri);
+                     FileOutputStream out = new FileOutputStream(tempFile)) {
+                    if (in == null) throw new Exception("Failed to open input stream from URI.");
+                    long totalSize = context.getContentResolver().openFileDescriptor(fileUri, "r").getStatSize();
+                    streamEncrypt(password, in, totalSize, out, simpleOptions);
+                }
+
+                // If successful, replace the original file with the encrypted one
+                replaceFile(tempFile, fileUri);
                 listener.onSuccess("Encryption successful.");
+
             } catch (Exception e) {
                 e.printStackTrace();
                 listener.onError("Encryption failed: " + e.getMessage());
+            } finally {
+                if (tempFile != null) tempFile.delete();
             }
         }).start();
     }
 
-    /**
-     * Decrypts any file (simple or advanced) by reading its header first.
-     */
-    public void decrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean useMultithreading) {
+    public void decrypt(String password, Uri fileUri, boolean useMultithreading) {
         new Thread(() -> {
+            File tempFile = null;
             try {
-                // The advanced decryption method reads the header and decrypts automatically.
-                streamDecryptAdvanced(password, inputStream, totalSize, outputStream);
+                // Create a temporary file to write decrypted data to
+                tempFile = File.createTempFile("dec", ".tmp", context.getCacheDir());
+
+                // Perform decryption from source URI to temp file
+                try (InputStream in = context.getContentResolver().openInputStream(fileUri);
+                     FileOutputStream out = new FileOutputStream(tempFile)) {
+                     if (in == null) throw new Exception("Failed to open input stream from URI.");
+                    streamDecrypt(password, in, out);
+                }
+
+                // If successful, replace the original file with the decrypted one
+                replaceFile(tempFile, fileUri);
                 listener.onSuccess("Decryption successful.");
+
             } catch (Exception e) {
                 e.printStackTrace();
                 listener.onError("Decryption failed: " + e.getMessage());
+            } finally {
+                if (tempFile != null) tempFile.delete();
             }
         }).start();
     }
 
-    /**
-     * Encrypts a stream using user-specified advanced options.
-     */
-    public void encryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream, CryptoOptions options) {
-        new Thread(() -> {
+    public void encryptAdvanced(String password, Uri fileUri, CryptoOptions options) {
+        // This is just an alias for the standard encrypt method now, but with custom options
+         new Thread(() -> {
+            File tempFile = null;
             try {
-                streamEncryptAdvanced(password, inputStream, totalSize, outputStream, options);
+                tempFile = File.createTempFile("enc_adv", ".tmp", context.getCacheDir());
+                try (InputStream in = context.getContentResolver().openInputStream(fileUri);
+                     FileOutputStream out = new FileOutputStream(tempFile)) {
+                    if (in == null) throw new Exception("Failed to open input stream from URI.");
+                    long totalSize = context.getContentResolver().openFileDescriptor(fileUri, "r").getStatSize();
+                    streamEncrypt(password, in, totalSize, out, options);
+                }
+                replaceFile(tempFile, fileUri);
                 listener.onSuccess("Advanced encryption successful.");
             } catch (Exception e) {
                 e.printStackTrace();
                 listener.onError("Advanced encryption failed: " + e.getMessage());
+            } finally {
+                if (tempFile != null) tempFile.delete();
             }
         }).start();
     }
-    
-    /**
-     * Decrypts any file (simple or advanced) by reading its header first.
-     */
-    public void decryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream) {
-        // This is just an alias for the standard decrypt method now.
-        decrypt(password, inputStream, totalSize, outputStream, false);
+
+    public void decryptAdvanced(String password, Uri fileUri) {
+        // The standard decrypt method can handle any file with a valid header
+        decrypt(password, fileUri, false);
     }
-    
-    /**
-     * Asynchronously reads and parses the header from an encrypted file stream.
-     */
-    public void readHeader(InputStream in, HeaderCallback callback) {
+
+    public void readHeader(Uri fileUri, HeaderCallback callback) {
         new Thread(() -> {
-            try {
+            try (InputStream in = context.getContentResolver().openInputStream(fileUri)) {
+                 if (in == null) throw new Exception("Failed to open input stream from URI.");
                 FileHeader header = readHeaderInternal(in);
                 callback.onHeaderRead(header);
             } catch (Exception e) {
@@ -129,215 +153,162 @@ public class CryptoManager {
         }).start();
     }
 
-    // --- UNIFIED STREAMING METHODS ---
+    // --- CORE STREAMING LOGIC ---
 
-    private void streamEncryptAdvanced(String password, InputStream in, long totalSize, OutputStream out, CryptoOptions options) throws Exception {
-        File tempEncryptedFile = null;
-        try {
-            // 1. Write header (Length-Prefixed)
-            FileHeader header = new FileHeader(options);
-            byte[] jsonBytes = header.toJson().getBytes(StandardCharsets.UTF_8);
-            byte[] lengthBytes = intToBytes(jsonBytes.length);
-            out.write(lengthBytes);
-            out.write(jsonBytes);
-            listener.onLog("File header written (" + (lengthBytes.length + jsonBytes.length) + " bytes).");
+    private void streamEncrypt(String password, InputStream in, long totalSize, OutputStream out, CryptoOptions options) throws Exception {
+        // 1. Write header
+        FileHeader header = new FileHeader(options);
+        byte[] headerBytes = header.toBytes();
+        out.write(headerBytes);
+        listener.onLog("File header written (" + headerBytes.length + " bytes).");
 
-            // 2. Derive keys
-            byte[] salt = generateRandom(SALT_LENGTH_BYTES);
-            SecretKeySpec[] keys = deriveKeysAdvanced(password, salt, options);
-            SecretKeySpec encKey = keys[0];
-            SecretKeySpec macKey = keys[1];
+        // 2. Derive keys
+        byte[] salt = generateRandom(SALT_LENGTH_BYTES);
+        SecretKeySpec[] keys = deriveKeys(password, salt, options);
+        SecretKeySpec encKey = keys[0];
+        SecretKeySpec macKey = keys[1];
 
-            // 3. Write Salt and IV
-            byte[] iv = generateRandom(options.getIvLengthBytes());
-            out.write(salt);
-            out.write(iv);
-            listener.onLog("Salt and IV written.");
+        // 3. Write Salt and IV
+        byte[] iv = generateRandom(options.getIvLengthBytes());
+        out.write(salt);
+        out.write(iv);
+        listener.onLog("Salt and IV written.");
 
-            // 4. Encrypt data to a temporary file
-            listener.onLog("Encrypting data to temporary file...");
-            tempEncryptedFile = File.createTempFile("enc_adv", ".tmp", context.getCacheDir());
-            try (FileOutputStream tempOut = new FileOutputStream(tempEncryptedFile)) {
-                Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
-                cipher.init(Cipher.ENCRYPT_MODE, encKey, new IvParameterSpec(iv));
+        // 4. Encrypt data and calculate HMAC simultaneously
+        Mac mac = Mac.getInstance(MAC_ALGORITHM);
+        mac.init(macKey);
 
-                byte[] buffer = new byte[options.getChunkSize()];
-                int bytesRead;
-                long processedBytes = 0;
+        Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
+        cipher.init(Cipher.ENCRYPT_MODE, encKey, new IvParameterSpec(iv));
 
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    byte[] encryptedBytes = cipher.update(buffer, 0, bytesRead);
-                    if (encryptedBytes != null) {
-                        tempOut.write(encryptedBytes);
+        byte[] buffer = new byte[options.getChunkSize()];
+        int bytesRead;
+        long processedBytes = 0;
+
+        try (CipherOutputStream cos = new CipherOutputStream(out, cipher)) {
+            // Write header, salt, and IV to HMAC
+            mac.update(headerBytes);
+            mac.update(salt);
+            mac.update(iv);
+
+            while ((bytesRead = in.read(buffer)) != -1) {
+                cos.write(buffer, 0, bytesRead);
+                mac.update(cipher.update(buffer, 0, bytesRead)); // Update HMAC with encrypted bytes
+                processedBytes += bytesRead;
+                reportProgress(processedBytes, totalSize);
+            }
+        }
+        
+        byte[] finalCipherBytes = cipher.doFinal();
+        if (finalCipherBytes != null) {
+             mac.update(finalCipherBytes);
+        }
+
+        // 5. Append HMAC tag
+        byte[] hmacTag = mac.doFinal();
+        out.write(hmacTag);
+        listener.onLog("Encrypted data and HMAC tag written.");
+    }
+
+    private void streamDecrypt(String password, InputStream in, OutputStream out) throws Exception {
+        // 1. Read Header
+        listener.onLog("Reading file header...");
+        FileHeader header = readHeaderInternal(in);
+        CryptoOptions options = header.getOptions();
+        listener.onLog("Header found: " + options.toString());
+        byte[] headerBytes = header.toBytes();
+
+        // 2. Read Salt and IV
+        byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
+        byte[] iv = readBytes(in, options.getIvLengthBytes());
+        listener.onLog("Salt and IV read.");
+
+        // 3. Derive keys
+        SecretKeySpec[] keys = deriveKeys(password, salt, options);
+        SecretKeySpec encKey = keys[0];
+        SecretKeySpec macKey = keys[1];
+
+        // 4. Setup MAC and Cipher
+        Mac mac = Mac.getInstance(MAC_ALGORITHM);
+        mac.init(macKey);
+        mac.update(headerBytes);
+        mac.update(salt);
+        mac.update(iv);
+        
+        Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
+        cipher.init(Cipher.DECRYPT_MODE, encKey, new IvParameterSpec(iv));
+
+        // 5. Decrypt and verify HMAC on-the-fly
+        listener.onLog("Decrypting and verifying file...");
+        try (CipherInputStream cis = new CipherInputStream(in, cipher)) {
+            byte[] buffer = new byte[options.getChunkSize() + MAC_TAG_LENGTH_BYTES];
+            int bytesRead;
+            while ((bytesRead = cis.read(buffer)) != -1) {
+                // If we read more data than the buffer, it means there's more to process
+                if (bytesRead > options.getChunkSize()) {
+                    int macDataOffset = bytesRead - MAC_TAG_LENGTH_BYTES;
+                    out.write(buffer, 0, macDataOffset);
+                    mac.update(cipher.update(buffer, 0, macDataOffset));
+                } else { // This is the last chunk
+                    byte[] storedMac = Arrays.copyOfRange(buffer, bytesRead - MAC_TAG_LENGTH_BYTES, bytesRead);
+                    byte[] data = Arrays.copyOf(buffer, bytesRead - MAC_TAG_LENGTH_BYTES);
+                    byte[] finalMac = mac.doFinal(cipher.doFinal(data));
+
+                    if (!MessageDigest.isEqual(storedMac, finalMac)) {
+                        throw new SecurityException("HMAC validation failed: File is corrupt or has been tampered with.");
                     }
-                    processedBytes += bytesRead;
-                    reportProgress(processedBytes, totalSize);
-                }
-                byte[] finalBytes = cipher.doFinal();
-                if (finalBytes != null) {
-                    tempOut.write(finalBytes);
+                    out.write(data);
+                    break;
                 }
             }
-            listener.onLog("Temporary file encryption complete.");
-
-            // 5. Calculate HMAC of the encrypted temporary file
-            listener.onLog("Calculating HMAC tag...");
-            byte[] hmacTag = calculateHmac(macKey, tempEncryptedFile, 0, tempEncryptedFile.length(), options.getChunkSize());
-            listener.onLog("HMAC tag calculated.");
-
-            // 6. Write encrypted data from temp file to the final output stream
-            try (FileInputStream tempIn = new FileInputStream(tempEncryptedFile)) {
-                byte[] buffer = new byte[options.getChunkSize()];
-                int bytesRead;
-                while ((bytesRead = tempIn.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
-            }
-
-            // 7. Append the HMAC tag to the final output
-            out.write(hmacTag);
-            listener.onLog("Encrypted data and HMAC tag written to final output.");
-
-        } finally {
-            if (tempEncryptedFile != null && tempEncryptedFile.exists()) {
-                tempEncryptedFile.delete();
-            }
+             listener.onLog("HMAC verification successful.");
         }
     }
 
-    private void streamDecryptAdvanced(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
-        File tempCiphertextData = null;
-        try {
-            // 1. Read Header to get options
-            listener.onLog("Reading file header...");
-            FileHeader header = readHeaderInternal(in);
-            CryptoOptions options = header.getOptions();
-            listener.onLog("Header found: " + options.toString());
-
-            // 2. Read Salt and IV
-            byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
-            byte[] iv = readBytes(in, options.getIvLengthBytes());
-            listener.onLog("Salt and IV read.");
-
-            // 3. Derive keys using parameters from header
-            SecretKeySpec[] keys = deriveKeysAdvanced(password, salt, options);
-            SecretKeySpec encKey = keys[0];
-            SecretKeySpec macKey = keys[1];
-
-            // 4. Stream ciphertext + HMAC to a temp file for verification
-            listener.onLog("Buffering encrypted content to temporary file...");
-            tempCiphertextData = File.createTempFile("dec_adv", ".tmp", context.getCacheDir());
-            long ciphertextAndMacSize = 0;
-            try (FileOutputStream tempOut = new FileOutputStream(tempCiphertextData)) {
-                byte[] buffer = new byte[options.getChunkSize()];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    tempOut.write(buffer, 0, bytesRead);
-                    ciphertextAndMacSize += bytesRead;
-                }
-            }
-
-            if (ciphertextAndMacSize < MAC_TAG_LENGTH_BYTES) {
-                throw new SecurityException("Invalid data: too short to contain HMAC tag.");
-            }
-
-            // 5. Verify HMAC
-            listener.onLog("Verifying file integrity (HMAC)...");
-            long ciphertext_size = ciphertextAndMacSize - MAC_TAG_LENGTH_BYTES;
-            byte[] calculatedMac = calculateHmac(macKey, tempCiphertextData, 0, ciphertext_size, options.getChunkSize());
-            byte[] storedMac = readFromFile(tempCiphertextData, ciphertext_size, MAC_TAG_LENGTH_BYTES);
-
-            if (!MessageDigest.isEqual(calculatedMac, storedMac)) {
-                throw new SecurityException("HMAC validation failed: File is corrupt or has been tampered with.");
-            }
-            listener.onLog("HMAC verification successful.");
-
-            // 6. Decrypt from temp file if verification passes
-            listener.onLog("Decrypting data...");
-            Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
-            cipher.init(Cipher.DECRYPT_MODE, encKey, new IvParameterSpec(iv));
-
-            try (FileInputStream tempIn = new FileInputStream(tempCiphertextData)) {
-                try (CipherInputStream cipherIn = new CipherInputStream(tempIn, cipher)) {
-                    byte[] buffer = new byte[options.getChunkSize()];
-                    int bytesRead;
-                    long processedBytes = 0;
-                    while (processedBytes < ciphertext_size) {
-                        int toRead = (int) Math.min(buffer.length, ciphertext_size - processedBytes);
-                        bytesRead = cipherIn.read(buffer, 0, toRead);
-                        if (bytesRead == -1) break; // End of stream
-                        out.write(buffer, 0, bytesRead);
-                        processedBytes += bytesRead;
-                        reportProgress(processedBytes, ciphertext_size);
-                    }
-                }
-            }
-        } finally {
-             if (tempCiphertextData != null && tempCiphertextData.exists()) {
-                tempCiphertextData.delete();
-            }
-        }
-    }
-    
     // --- HELPER METHODS ---
-    
+
     private FileHeader readHeaderInternal(InputStream in) throws Exception {
         byte[] lengthBytes = readBytes(in, 4);
         int headerLength = bytesToInt(lengthBytes);
-        if(headerLength <= 0 || headerLength > 1024) { // Sanity check for 1KB max header
+        if (headerLength <= 0 || headerLength > 2048) { // Sanity check
             throw new JSONException("Invalid or corrupt header length: " + headerLength);
         }
         byte[] jsonBytes = readBytes(in, headerLength);
         String jsonString = new String(jsonBytes, StandardCharsets.UTF_8);
         return FileHeader.fromJson(jsonString);
     }
-
-    private SecretKeySpec[] deriveKeysAdvanced(String password, byte[] salt, CryptoOptions options) throws Exception {
-        listener.onLog("Deriving keys with " + options.getKdf() + ", " + options.getKeyLength() + "-bit key...");
-        int macKeyLengthBits = 256; // Using a fixed-size HMAC key for simplicity
+    
+    private SecretKeySpec[] deriveKeys(String password, byte[] salt, CryptoOptions options) throws Exception {
+        listener.onLog("Deriving keys with " + options.getKdf() + "...");
+        int macKeyLengthBits = 256;
         int derivedKeyLength = options.getKeyLength() + macKeyLengthBits;
+        
         SecretKeyFactory factory = SecretKeyFactory.getInstance(options.getKdf());
         PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, KDF_ITERATION_COUNT, derivedKeyLength);
         byte[] derivedKeyBytes = factory.generateSecret(spec).getEncoded();
 
         int encKeySizeBytes = options.getKeyLength() / 8;
         int macKeySizeBytes = macKeyLengthBits / 8;
+        
         SecretKeySpec encKey = new SecretKeySpec(derivedKeyBytes, 0, encKeySizeBytes, options.getProtocol());
         SecretKeySpec macKey = new SecretKeySpec(derivedKeyBytes, encKeySizeBytes, macKeySizeBytes, MAC_ALGORITHM);
-        Arrays.fill(derivedKeyBytes, (byte) 0); // zero out key material
+        
+        Arrays.fill(derivedKeyBytes, (byte) 0); // Zero out key material after use
         listener.onLog("Key derivation complete.");
         return new SecretKeySpec[]{encKey, macKey};
     }
-    
-    private byte[] calculateHmac(SecretKeySpec macKey, File file, long offset, long length, int chunkSize) throws Exception {
-        Mac mac = Mac.getInstance(MAC_ALGORITHM);
-        mac.init(macKey);
-        try (FileInputStream in = new FileInputStream(file)) {
-            if (offset > 0) {
-                in.skip(offset);
+
+    private void replaceFile(File sourceFile, Uri targetUri) throws Exception {
+        try (FileInputStream fis = new FileInputStream(sourceFile);
+             OutputStream out = context.getContentResolver().openOutputStream(targetUri, "w")) {
+            if (out == null) {
+                throw new Exception("Failed to open output stream to overwrite URI.");
             }
-            byte[] buffer = new byte[chunkSize];
-            long remaining = length;
-            while (remaining > 0) {
-                int toRead = (int) Math.min(buffer.length, remaining);
-                int bytesRead = in.read(buffer, 0, toRead);
-                 if (bytesRead == -1) break; // End of file
-                mac.update(buffer, 0, bytesRead);
-                remaining -= bytesRead;
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = fis.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
             }
-        }
-        return mac.doFinal();
-    }
-    
-    private byte[] readFromFile(File file, long offset, int length) throws Exception {
-        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-            raf.seek(offset);
-            byte[] data = new byte[length];
-            int bytesRead = raf.read(data);
-            if (bytesRead != length) {
-                throw new Exception("Could not read expected number of bytes from file.");
-            }
-            return data;
         }
     }
 
@@ -350,30 +321,18 @@ public class CryptoManager {
     private byte[] readBytes(InputStream in, int length) throws Exception {
         byte[] bytes = new byte[length];
         int offset = 0;
-        while(offset < length) {
-            int bytesRead = in.read(bytes, offset, length - offset);
-            if (bytesRead == -1) {
-                throw new Exception("Could not read required bytes from stream (end of stream reached). Expected " + length + ", got " + offset);
+        while (offset < length) {
+            int read = in.read(bytes, offset, length - offset);
+            if (read == -1) {
+                throw new Exception("End of stream reached before all bytes could be read. Expected " + length + ", got " + offset);
             }
-            offset += bytesRead;
+            offset += read;
         }
         return bytes;
     }
-    
-    private int bytesToInt(byte[] bytes) {
-        return ((bytes[0] & 0xFF) << 24) |
-               ((bytes[1] & 0xFF) << 16) |
-               ((bytes[2] & 0xFF) << 8)  |
-               ((bytes[3] & 0xFF));
-    }
 
-    private byte[] intToBytes(int value) {
-        return new byte[] {
-            (byte)(value >> 24),
-            (byte)(value >> 16),
-            (byte)(value >> 8),
-            (byte)value
-        };
+    private int bytesToInt(byte[] bytes) {
+        return ((bytes[0] & 0xFF) << 24) | ((bytes[1] & 0xFF) << 16) | ((bytes[2] & 0xFF) << 8) | ((bytes[3] & 0xFF));
     }
 
     private void reportProgress(long processed, long total) {

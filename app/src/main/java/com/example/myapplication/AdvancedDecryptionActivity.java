@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
 import android.provider.OpenableColumns;
 import android.view.View;
 import android.widget.Button;
@@ -22,9 +21,6 @@ import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.FileHeader;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-
-import java.io.InputStream;
-import java.io.OutputStream;
 
 public class AdvancedDecryptionActivity extends BaseActivity implements CryptoListener {
 
@@ -71,7 +67,6 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
     @Override
     protected void onResume() {
         super.onResume();
-        // Set the selected item in the bottom navigation view
         if (bottomNav != null) {
             bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
         }
@@ -115,30 +110,30 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         if (uri == null) return;
         selectedFileUri = uri;
 
-        final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
-        getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
+        try {
+            final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
+        } catch (SecurityException e) {
+            onLog("Could not get persistent permissions. May fail on reboot.");
+        }
 
         String fileName = getFileName(uri);
         selectedFileTextView.setText("Selected file: " + fileName);
         onLog("File selected: " + fileName);
         headerInfoLayout.setVisibility(View.GONE); // Hide old info
 
-        try (InputStream inputStream = getContentResolver().openInputStream(selectedFileUri)) {
-            if (inputStream == null) throw new Exception("Could not open input stream");
-            cryptoManager.readHeader(inputStream, new CryptoManager.HeaderCallback() {
-                @Override
-                public void onHeaderRead(FileHeader header) {
-                    runOnUiThread(() -> displayHeaderInfo(header));
-                }
+        // CryptoManager now reads the header directly from the URI
+        cryptoManager.readHeader(selectedFileUri, new CryptoManager.HeaderCallback() {
+            @Override
+            public void onHeaderRead(FileHeader header) {
+                runOnUiThread(() -> displayHeaderInfo(header));
+            }
 
-                @Override
-                public void onError(Exception e) {
-                    runOnUiThread(() -> AdvancedDecryptionActivity.this.onError("Failed to read file header: " + e.getMessage()));
-                }
-            });
-        } catch (Exception e) {
-            onError("Failed to open file: " + e.getMessage());
-        }
+            @Override
+            public void onError(Exception e) {
+                runOnUiThread(() -> AdvancedDecryptionActivity.this.onError("Failed to read file header: " + e.getMessage()));
+            }
+        });
     }
 
     private void displayHeaderInfo(FileHeader header) {
@@ -168,21 +163,11 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         }
 
         try {
-            long totalSize;
-            try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
-                totalSize = pfd.getStatSize();
-            }
-            InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
-            OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
-
-            if (inputStream == null || outputStream == null) {
-                throw new Exception("Failed to open streams for the selected file.");
-            }
-
             setUiEnabled(false);
             onLog("Starting advanced decryption...");
 
-            cryptoManager.decryptAdvanced(password, inputStream, totalSize, outputStream);
+            // CryptoManager now handles all file IO via URI
+            cryptoManager.decryptAdvanced(password, selectedFileUri);
 
         } catch (Exception e) {
             onError("Failed to start decryption: " + e.getMessage());
@@ -198,6 +183,7 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
 
             if (enabled) {
                 progressBar.setVisibility(View.GONE);
+                 if(statusTextView != null) statusTextView.setVisibility(View.GONE);
             } else {
                 lastProgress = -1;
                 progressBar.setVisibility(View.VISIBLE);

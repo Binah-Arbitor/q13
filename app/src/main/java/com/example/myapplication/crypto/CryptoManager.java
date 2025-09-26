@@ -119,7 +119,7 @@ public class CryptoManager {
         }).start();
     }
 
-    // --- SIMPLE ENCRYPTION/DECRYPTION ---
+    // --- STREAMING METHODS ---
 
     private void streamEncryptSimple(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
         byte[] salt = generateRandom(SALT_LENGTH_BYTES);
@@ -167,18 +167,80 @@ public class CryptoManager {
             }
         }
     }
-    
-    private SecretKeySpec deriveKeySimple(String password, byte[] salt) throws Exception {
-        SecretKeyFactory factory = SecretKeyFactory.getInstance(SIMPLE_KEY_DERIVATION_ALGORITHM);
-        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, SIMPLE_KDF_ITERATION_COUNT, SIMPLE_KEY_LENGTH_BITS);
-        byte[] keyBytes = factory.generateSecret(spec).getEncoded();
-        SecretKeySpec secretKey = new SecretKeySpec(keyBytes, SIMPLE_ENCRYPTION_ALGORITHM);
-        Arrays.fill(keyBytes, (byte) 0);
-        return secretKey;
+
+    private void streamEncryptAdvanced(String password, InputStream in, long totalSize, OutputStream out, CryptoOptions options) throws Exception {
+        File tempEncryptedFile = null;
+        try {
+            // 1. Write header (Length-Prefixed)
+            FileHeader header = new FileHeader(options);
+            byte[] jsonBytes = header.toJson().getBytes(StandardCharsets.UTF_8);
+            byte[] lengthBytes = intToBytes(jsonBytes.length);
+            out.write(lengthBytes);
+            out.write(jsonBytes);
+            listener.onLog("File header written (" + (lengthBytes.length + jsonBytes.length) + " bytes).");
+
+            // 2. Derive keys
+            byte[] salt = generateRandom(SALT_LENGTH_BYTES);
+            SecretKeySpec[] keys = deriveKeysAdvanced(password, salt, options);
+            SecretKeySpec encKey = keys[0];
+            SecretKeySpec macKey = keys[1];
+
+            // 3. Write Salt and IV
+            byte[] iv = generateRandom(IV_LENGTH_BYTES);
+            out.write(salt);
+            out.write(iv);
+            listener.onLog("Salt and IV written.");
+
+            // 4. Encrypt data to a temporary file
+            listener.onLog("Encrypting data to temporary file...");
+            tempEncryptedFile = File.createTempFile("enc_adv", ".tmp", context.getCacheDir());
+            try (FileOutputStream tempOut = new FileOutputStream(tempEncryptedFile)) {
+                Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
+                cipher.init(Cipher.ENCRYPT_MODE, encKey, new IvParameterSpec(iv));
+
+                byte[] buffer = new byte[options.getChunkSize()];
+                int bytesRead;
+                long processedBytes = 0;
+
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    byte[] encryptedBytes = cipher.update(buffer, 0, bytesRead);
+                    if (encryptedBytes != null) {
+                        tempOut.write(encryptedBytes);
+                    }
+                    processedBytes += bytesRead;
+                    reportProgress(processedBytes, totalSize);
+                }
+                byte[] finalBytes = cipher.doFinal();
+                if (finalBytes != null) {
+                    tempOut.write(finalBytes);
+                }
+            }
+            listener.onLog("Temporary file encryption complete.");
+
+            // 5. Calculate HMAC of the encrypted temporary file
+            listener.onLog("Calculating HMAC tag...");
+            byte[] hmacTag = calculateHmac(macKey, tempEncryptedFile, 0, tempEncryptedFile.length(), options.getChunkSize());
+            listener.onLog("HMAC tag calculated.");
+
+            // 6. Write encrypted data from temp file to the final output stream
+            try (FileInputStream tempIn = new FileInputStream(tempEncryptedFile)) {
+                byte[] buffer = new byte[options.getChunkSize()];
+                int bytesRead;
+                while ((bytesRead = tempIn.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            }
+
+            // 7. Append the HMAC tag to the final output
+            out.write(hmacTag);
+            listener.onLog("Encrypted data and HMAC tag written to final output.");
+
+        } finally {
+            if (tempEncryptedFile != null && tempEncryptedFile.exists()) {
+                tempEncryptedFile.delete();
+            }
+        }
     }
-
-
-    // --- ADVANCED DECRYPTION ---
 
     private void streamDecryptAdvanced(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
         File tempCiphertextData = null;
@@ -238,6 +300,10 @@ public class CryptoManager {
                     int bytesRead;
                     long processedBytes = 0;
                     while ((bytesRead = cipherIn.read(buffer)) != -1) {
+                        if (processedBytes + bytesRead > ciphertext_size) {
+                             out.write(buffer, 0, (int)(ciphertext_size - processedBytes));
+                             break;
+                        }
                         out.write(buffer, 0, bytesRead);
                         processedBytes += bytesRead;
                         reportProgress(processedBytes, ciphertext_size);
@@ -251,10 +317,12 @@ public class CryptoManager {
         }
     }
     
+    // --- HELPER METHODS ---
+    
     private FileHeader readHeaderInternal(InputStream in) throws Exception {
         byte[] lengthBytes = readBytes(in, 4);
         int headerLength = bytesToInt(lengthBytes);
-        if(headerLength <= 0 || headerLength > 1024 * 1024) { // Sanity check
+        if(headerLength <= 0 || headerLength > 1024) { // Sanity check for 1KB max header
             throw new JSONException("Invalid or corrupt header length: " + headerLength);
         }
         byte[] jsonBytes = readBytes(in, headerLength);
@@ -262,71 +330,13 @@ public class CryptoManager {
         return FileHeader.fromJson(jsonString);
     }
 
-    // --- UNMODIFIED METHODS (encryptAdvanced, simple encrypt/decrypt, helpers) ... ---
-
-    private void streamEncryptAdvanced(String password, InputStream in, long totalSize, OutputStream out, CryptoOptions options) throws Exception {
-        File tempEncryptedFile = null;
-        try {
-            FileHeader header = new FileHeader(options);
-            byte[] headerBytes = header.toBytes();
-            out.write(headerBytes);
-            listener.onLog("File header written (" + headerBytes.length + " bytes).");
-
-            byte[] salt = generateRandom(SALT_LENGTH_BYTES);
-            SecretKeySpec[] keys = deriveKeysAdvanced(password, salt, options);
-            SecretKeySpec encKey = keys[0];
-            SecretKeySpec macKey = keys[1];
-
-            byte[] iv = generateRandom(IV_LENGTH_BYTES);
-            out.write(salt);
-            out.write(iv);
-            listener.onLog("Salt and IV written.");
-
-            listener.onLog("Encrypting data to temporary file...");
-            tempEncryptedFile = File.createTempFile("enc_adv", ".tmp", context.getCacheDir());
-            try (FileOutputStream tempOut = new FileOutputStream(tempEncryptedFile)) {
-                Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
-                cipher.init(Cipher.ENCRYPT_MODE, encKey, new IvParameterSpec(iv));
-
-                byte[] buffer = new byte[options.getChunkSize()];
-                int bytesRead;
-                long processedBytes = 0;
-
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    byte[] encryptedBytes = cipher.update(buffer, 0, bytesRead);
-                    if (encryptedBytes != null) {
-                        tempOut.write(encryptedBytes);
-                    }
-                    processedBytes += bytesRead;
-                    reportProgress(processedBytes, totalSize);
-                }
-                byte[] finalBytes = cipher.doFinal();
-                if (finalBytes != null) {
-                    tempOut.write(finalBytes);
-                }
-            }
-            listener.onLog("Temporary file encryption complete.");
-
-            listener.onLog("Calculating HMAC tag...");
-            byte[] hmacTag = calculateHmac(macKey, tempEncryptedFile, 0, tempEncryptedFile.length(), options.getChunkSize());
-            listener.onLog("HMAC tag calculated.");
-
-            try (FileInputStream tempIn = new FileInputStream(tempEncryptedFile)) {
-                byte[] buffer = new byte[options.getChunkSize()];
-                int bytesRead;
-                while ((bytesRead = tempIn.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
-                }
-            }
-
-            out.write(hmacTag);
-            listener.onLog("Encrypted data and HMAC tag written to final output.");
-
-        } finally {
-            if (tempEncryptedFile != null && tempEncryptedFile.exists()) {
-                tempEncryptedFile.delete();
-            }
-        }
+    private SecretKeySpec deriveKeySimple(String password, byte[] salt) throws Exception {
+        SecretKeyFactory factory = SecretKeyFactory.getInstance(SIMPLE_KEY_DERIVATION_ALGORITHM);
+        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, SIMPLE_KDF_ITERATION_COUNT, SIMPLE_KEY_LENGTH_BITS);
+        byte[] keyBytes = factory.generateSecret(spec).getEncoded();
+        SecretKeySpec secretKey = new SecretKeySpec(keyBytes, SIMPLE_ENCRYPTION_ALGORITHM);
+        Arrays.fill(keyBytes, (byte) 0); // zero out key material
+        return secretKey;
     }
 
     private SecretKeySpec[] deriveKeysAdvanced(String password, byte[] salt, CryptoOptions options) throws Exception {
@@ -341,7 +351,7 @@ public class CryptoManager {
         int macKeySizeBytes = macKeyLengthBits / 8;
         SecretKeySpec encKey = new SecretKeySpec(derivedKeyBytes, 0, encKeySizeBytes, options.getProtocol());
         SecretKeySpec macKey = new SecretKeySpec(derivedKeyBytes, encKeySizeBytes, macKeySizeBytes, MAC_ALGORITHM);
-        Arrays.fill(derivedKeyBytes, (byte) 0);
+        Arrays.fill(derivedKeyBytes, (byte) 0); // zero out key material
         listener.onLog("Key derivation complete.");
         return new SecretKeySpec[]{encKey, macKey};
     }
@@ -384,9 +394,13 @@ public class CryptoManager {
 
     private byte[] readBytes(InputStream in, int length) throws Exception {
         byte[] bytes = new byte[length];
-        int bytesRead = in.read(bytes);
-        if (bytesRead < length) {
-            throw new Exception("Could not read required bytes from stream. Expected " + length + ", got " + bytesRead);
+        int bytesRead = 0;
+        int offset = 0;
+        while(offset < length && (bytesRead = in.read(bytes, offset, length - offset)) != -1) {
+            offset += bytesRead;
+        }
+        if (offset < length) {
+            throw new Exception("Could not read required bytes from stream. Expected " + length + ", got " + offset);
         }
         return bytes;
     }
@@ -396,6 +410,15 @@ public class CryptoManager {
                ((bytes[1] & 0xFF) << 16) |
                ((bytes[2] & 0xFF) << 8)  |
                ((bytes[3] & 0xFF));
+    }
+
+    private byte[] intToBytes(int value) {
+        return new byte[] {
+            (byte)(value >> 24),
+            (byte)(value >> 16),
+            (byte)(value >> 8),
+            (byte)value
+        };
     }
 
     private void reportProgress(long processed, long total) {

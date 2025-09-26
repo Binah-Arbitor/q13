@@ -52,7 +52,6 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_decryption);
         
-        // Initialize all views first to prevent any NullPointerExceptions
         initializeViews();
         
         ActionBar actionBar = getSupportActionBar();
@@ -67,6 +66,15 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
 
         fileSelectButton.setOnClickListener(v -> checkPermissionsAndExecute(this::launchFilePicker));
         decryptButton.setOnClickListener(v -> handleDecryption());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Set the selected item in the bottom navigation view
+        if (bottomNav != null) {
+            bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
+        }
     }
 
     @Override
@@ -115,7 +123,6 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         onLog("File selected: " + fileName);
         headerInfoLayout.setVisibility(View.GONE); // Hide old info
 
-        // Try to read the header
         try (InputStream inputStream = getContentResolver().openInputStream(selectedFileUri)) {
             if (inputStream == null) throw new Exception("Could not open input stream");
             cryptoManager.readHeader(inputStream, new CryptoManager.HeaderCallback() {
@@ -195,7 +202,7 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
                 lastProgress = -1;
                 progressBar.setVisibility(View.VISIBLE);
                 progressBar.setProgress(0);
-                statusTextView.setVisibility(View.GONE);
+                if(statusTextView != null) statusTextView.setVisibility(View.GONE);
             }
         });
     }
@@ -228,7 +235,6 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupBottomNav() {
-        bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_advanced_decrypt) {
@@ -243,15 +249,10 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         });
     }
 
-    @Override
-    public void onProgress(int progress) { runOnUiThread(() -> { if (progressBar != null) progressBar.setProgress(progress); }); lastProgress = progress; }
-    @Override
-    public int getLastReportedProgress() { return lastProgress; }
-    @Override
-    public void onSuccess(String message) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✓ SUCCESS"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green)); } if (consoleTextView != null) consoleTextView.append("\n[SUCCESS] " + message + "\n"); scrollToBottom(); Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show(); }); }
-    @Override
-    public void onError(String errorMessage) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✗ ERROR"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red)); } if(consoleTextView != null) consoleTextView.append("\n[ERROR] " + errorMessage + "\n"); scrollToBottom(); Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show(); }); }
-    @Override
-    public void onLog(String logMessage) { runOnUiThread(() -> { if(consoleTextView != null) consoleTextView.append(logMessage + "\n"); scrollToBottom(); }); }
+    @Override public void onProgress(int progress) { runOnUiThread(() -> { if (progressBar != null) progressBar.setProgress(progress); }); lastProgress = progress; }
+    @Override public int getLastReportedProgress() { return lastProgress; }
+    @Override public void onSuccess(String message) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✓ SUCCESS"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green)); } if (consoleTextView != null) consoleTextView.append("\n[SUCCESS] " + message + "\n"); scrollToBottom(); Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show(); }); }
+    @Override public void onError(String errorMessage) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✗ ERROR"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red)); } if(consoleTextView != null) consoleTextView.append("\n[ERROR] " + errorMessage + "\n"); scrollToBottom(); Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show(); }); }
+    @Override public void onLog(String logMessage) { runOnUiThread(() -> { if(consoleTextView != null) consoleTextView.append(logMessage + "\n"); scrollToBottom(); }); }
     private void scrollToBottom() { if(consoleScrollView != null) { consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN)); } }
 }

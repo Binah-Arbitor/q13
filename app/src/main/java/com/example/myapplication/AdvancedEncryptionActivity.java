@@ -73,6 +73,15 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        // Set the selected item in the bottom navigation view
+        if (bottomNav != null) {
+            bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
+        }
+    }
+
+    @Override
     protected boolean isActivityForAdvancedMode() {
         return true;
     }
@@ -110,7 +119,6 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     selectedFileUri = result.getData().getData();
                     if (selectedFileUri != null) {
-                        // Persist read and write permissions for the selected file URI
                         final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
                         getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
 
@@ -124,18 +132,15 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupSpinners() {
-        // Use CipherInfo to populate spinners
         ArrayAdapter<String> protocolAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedCiphers());
         protocolSpinner.setAdapter(protocolAdapter);
 
-        // Key length, mode, and padding will be updated dynamically
         updateKeyLengthSpinner();
         updateModeAndPaddingSpinners();
 
         ArrayAdapter<String> kdfAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedKdfs());
         kdfSpinner.setAdapter(kdfAdapter);
 
-        // Add listeners to handle dynamic updates
         protocolSpinner.setOnItemSelectedListener(new SimpleItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -161,14 +166,13 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     private void updateModeAndPaddingSpinners() {
         ArrayAdapter<String> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedModes());
         modeSpinner.setAdapter(modeAdapter);
-        updatePaddingSpinner(); // Initial padding update
+        updatePaddingSpinner();
     }
 
     private void updatePaddingSpinner() {
         String selectedMode = modeSpinner.getSelectedItem().toString();
         ArrayAdapter<String> paddingAdapter;
         if (CipherInfo.isStreamMode(selectedMode)) {
-            // Stream ciphers don't need padding
             paddingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"NoPadding"});
             paddingSpinner.setEnabled(false);
         } else {
@@ -179,7 +183,6 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupSliders() {
-        // Chunk Size Slider (4KB to 16MB, powers of 2)
         chunkSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -190,12 +193,11 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
                     chunkSizeValueTextView.setText(String.format(Locale.US, "%d MB", currentChunkSizeKb / 1024));
                 }
             }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {} // No-op
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}  // No-op
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {} 
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}  
         });
         chunkSizeValueTextView.setText("4 KB");
 
-        // Thread Count Slider (1 to max available)
         int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors());
         threadCountSlider.setMax(maxThreads - 1);
         threadCountSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -204,14 +206,13 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
                 currentThreadCount = progress + 1;
                 threadCountValueTextView.setText(String.format(Locale.US, "%d", currentThreadCount));
             }
-            @Override public void onStartTrackingTouch(SeekBar seekBar) {} // No-op
-            @Override public void onStopTrackingTouch(SeekBar seekBar) {}  // No-op
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {} 
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}  
         });
         threadCountValueTextView.setText("1");
     }
 
     private void launchFilePicker() {
-        // Use ACTION_OPEN_DOCUMENT to get a persistent URI
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
@@ -230,20 +231,17 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
         }
 
         try {
-            // 1. Collect all options from the UI
             String protocol = protocolSpinner.getSelectedItem().toString();
             int keyLength = (Integer) keyLengthSpinner.getSelectedItem();
             String mode = modeSpinner.getSelectedItem().toString();
             String padding = paddingSpinner.getSelectedItem().toString();
             String kdf = kdfSpinner.getSelectedItem().toString();
-            int chunkSize = currentChunkSizeKb * 1024; // Convert KB to bytes
+            int chunkSize = currentChunkSizeKb * 1024;
             int threadCount = currentThreadCount;
 
-            // 2. Create an options bundle
             CryptoOptions options = new CryptoOptions(protocol, keyLength, mode, padding, kdf, chunkSize, threadCount);
             onLog("Crypto Options: " + options.toString());
 
-            // 3. Get streams and file size
             long totalSize;
             try (ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(selectedFileUri, "r")) {
                 totalSize = pfd.getStatSize();
@@ -255,11 +253,9 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
                 throw new Exception("Failed to open streams for the selected file.");
             }
 
-            // 4. Set UI to busy state
             setUiEnabled(false);
             onLog("Starting advanced encryption...");
 
-            // 5. Call CryptoManager
             cryptoManager.encryptAdvanced(password, inputStream, totalSize, outputStream, options);
 
         } catch (Exception e) {
@@ -295,7 +291,6 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupBottomNav() {
-        bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_advanced_encrypt) {
@@ -384,9 +379,8 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
         consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN));
     }
     
-    // To avoid boilerplate in setOnItemSelectedListener
     private static abstract class SimpleItemSelectedListener implements AdapterView.OnItemSelectedListener {
         @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {}
-        @Override public void onNothingSelected(AdapterView<?> parent) {} // No-op
+        @Override public void onNothingSelected(AdapterView<?> parent) {} 
     }
 }

@@ -62,11 +62,11 @@
                     android:textAppearance="?android:attr/textAppearanceMedium"
                     android:textStyle="bold" />
                 
-                <TextView android:id="@+id/info_protocol" style="@style/HeaderInfoText" tools:text="Protocol: AES"/>
-                <TextView android:id="@+id/info_key_length" style="@style/HeaderInfoText" tools:text="Key Length: 256-bit"/>
-                <TextView android:id="@+id/info_mode" style="@style/HeaderInfoText" tools:text="Mode: GCM"/>
-                <TextView android:id="@+id/info_padding" style="@style/HeaderInfoText" tools:text="Padding: NoPadding"/>
-                <TextView android:id="@+id/info_kdf" style="@style/HeaderInfoText" tools:text="KDF: PBKDF2WithHmacSHA256"/>
+                <TextView android:id="@+id/info_protocol" tools:text="Protocol: AES"/>
+                <TextView android:id="@+id/info_key_length" tools:text="Key Length: 256-bit"/>
+                <TextView android:id="@+id/info_mode" tools:text="Mode: GCM"/>
+                <TextView android:id="@+id/info_padding" tools:text="Padding: NoPadding"/>
+                <TextView android:id="@+id/info_kdf" tools:text="KDF: PBKDF2WithHmacSHA256"/>
 
             </LinearLayout>
 

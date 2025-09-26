@@ -218,17 +218,16 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
 
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
-        bottomNav.setOnNavigationItemSelectedListener(item -> {
+        bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_advanced_decrypt) {
-                return true; // Already here
+                // Already here
             } else if (itemId == R.id.nav_advanced_encrypt) {
                 Intent intent = new Intent(this, AdvancedEncryptionActivity.class);
                 intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
                 startActivity(intent);
-                return true;
             }
-            return false;
+            return true;
         });
     }
 

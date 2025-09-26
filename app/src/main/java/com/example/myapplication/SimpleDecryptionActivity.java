@@ -110,6 +110,10 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     Uri uri = result.getData().getData();
                     if (uri != null) {
+                        // Persist read and write permissions for the selected file URI
+                        final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                        getContentResolver().takePersistableUriPermission(uri, takeFlags);
+
                         uriConsumer.accept(uri);
                         String fileName = getFileName(uri);
                         textView.setText(prefix + fileName);
@@ -120,9 +124,10 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
     }
 
     private void launchFilePicker(ActivityResultLauncher<Intent> launcher, String title) {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");
+        // Use ACTION_OPEN_DOCUMENT to get a persistent URI
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
         launcher.launch(Intent.createChooser(intent, title));
     }
 
@@ -168,6 +173,7 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
             }
 
             InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+            // Open with "wt" to truncate and write. This requires persistent write permission.
             OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
 
             if (inputStream == null || outputStream == null) {

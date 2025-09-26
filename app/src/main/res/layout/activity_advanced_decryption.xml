@@ -6,10 +6,19 @@
     android:layout_height="match_parent"
     tools:context=".AdvancedDecryptionActivity">
 
+    <!-- Declare the BottomNav first so its ID is available for views declared later -->
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        app:menu="@menu/advanced_bottom_nav_menu" />
+
+    <!-- The ScrollView is positioned above the BottomNav -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_above="@+id/bottom_nav">
+        android:layout_above="@id/bottom_nav">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -45,7 +54,7 @@
                 android:inputType="textPassword"
                 android:hint="Password" />
 
-            <!-- Header Info Display -->
+            <!-- Header Info Display (from original decryption layout) -->
             <LinearLayout
                 android:id="@+id/header_info_layout"
                 android:layout_width="match_parent"
@@ -62,11 +71,11 @@
                     android:textAppearance="?android:attr/textAppearanceMedium"
                     android:textStyle="bold" />
                 
-                <TextView android:id="@+id/info_protocol" tools:text="Protocol: AES"/>
-                <TextView android:id="@+id/info_key_length" tools:text="Key Length: 256-bit"/>
-                <TextView android:id="@+id/info_mode" tools:text="Mode: GCM"/>
-                <TextView android:id="@+id/info_padding" tools:text="Padding: NoPadding"/>
-                <TextView android:id="@+id/info_kdf" tools:text="KDF: PBKDF2WithHmacSHA256"/>
+                <TextView android:id="@+id/info_protocol" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Protocol: AES"/>
+                <TextView android:id="@+id/info_key_length" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Key Length: 256-bit"/>
+                <TextView android:id="@+id/info_mode" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Mode: GCM"/>
+                <TextView android:id="@+id/info_padding" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Padding: NoPadding"/>
+                <TextView android:id="@+id/info_kdf" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="KDF: PBKDF2WithHmacSHA256"/>
 
             </LinearLayout>
 
@@ -78,7 +87,7 @@
                 android:layout_marginTop="16dp"
                 android:text="Decrypt" />
 
-            <!-- Status and Console -->
+            <!-- Status and Console (from encryption layout) -->
             <FrameLayout
                 android:id="@+id/status_layout"
                 android:layout_width="match_parent"
@@ -113,19 +122,12 @@
                 <TextView
                     android:id="@+id/console_textview"
                     android:layout_width="match_parent"
-                    android.layout_height="wrap_content"
+                    android:layout_height="wrap_content"
                     android:padding="8dp"
                     android:fontFamily="monospace"/>
             </ScrollView>
 
         </LinearLayout>
     </ScrollView>
-
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottom_nav"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        app:menu="@menu/advanced_bottom_nav_menu" />
 
 </RelativeLayout>

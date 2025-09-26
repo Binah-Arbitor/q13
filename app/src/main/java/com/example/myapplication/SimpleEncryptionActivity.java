@@ -85,6 +85,10 @@ public class SimpleEncryptionActivity extends BaseActivity implements CryptoList
             result -> {
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     selectedFileUri = result.getData().getData();
+                    // Persist read and write permissions for the selected file URI
+                    final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                    getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
+                    
                     String fileName = getFileName(selectedFileUri);
                     selectedFileTextView.setText("Selected file: " + fileName);
                     onLog("File selected: " + fileName);
@@ -94,10 +98,11 @@ public class SimpleEncryptionActivity extends BaseActivity implements CryptoList
     }
 
     private void launchFilePicker() {
-        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-        intent.setType("*/*");
+        // Use ACTION_OPEN_DOCUMENT to get a persistent URI
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        filePickerLauncher.launch(Intent.createChooser(intent, "Select a file to encrypt"));
+        intent.setType("*/*");
+        filePickerLauncher.launch(intent);
     }
 
     private void handleEncryption() {
@@ -122,6 +127,7 @@ public class SimpleEncryptionActivity extends BaseActivity implements CryptoList
                 totalSize = pfd.getStatSize();
             }
             InputStream inputStream = getContentResolver().openInputStream(selectedFileUri);
+            // Open with "wt" to truncate and write. This requires persistent write permission.
             OutputStream outputStream = getContentResolver().openOutputStream(selectedFileUri, "wt");
 
             if (inputStream == null || outputStream == null) {

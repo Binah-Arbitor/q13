@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Provides centralized information about supported cryptographic algorithms,
@@ -17,19 +19,21 @@ public class CipherInfo {
     // Map: Cipher -> Supported Key Lengths (in bits)
     private static final Map<String, List<Integer>> supportedKeyLengths = new HashMap<>();
 
+    // Map: Cipher -> Supported Modes
+    private static final Map<String, List<String>> protocolToModes = new HashMap<>();
+
     // Lists of supported modes, paddings, and KDFs
-    private static final List<String> supportedModes;
     private static final List<String> streamModes; // Modes that don't use padding
     private static final List<String> supportedPaddings;
     private static final List<String> supportedKdfs;
 
     static {
         // --- Initialize Supported Ciphers and Key Lengths ---
-        // Values from Bouncy Castle specs.
         supportedKeyLengths.put("AES", Arrays.asList(256, 192, 128));
         supportedKeyLengths.put("Serpent", Arrays.asList(256, 192, 128));
         supportedKeyLengths.put("Twofish", Arrays.asList(256, 192, 128));
         supportedKeyLengths.put("Camellia", Arrays.asList(256, 192, 128));
+        supportedKeyLengths.put("DESede", Arrays.asList(192, 128)); // 3-key and 2-key TripleDES
         supportedKeyLengths.put("RC6", Arrays.asList(256, 192, 128));
         supportedKeyLengths.put("CAST6", Arrays.asList(256, 192, 128));
         supportedKeyLengths.put("SEED", Collections.singletonList(128));
@@ -37,13 +41,38 @@ public class CipherInfo {
         supportedKeyLengths.put("ARIA", Arrays.asList(256, 192, 128));
 
         // --- Initialize Modes ---
-        supportedModes = Arrays.asList("GCM", "CBC", "CTR", "CFB", "OFB");
-        
-        // Stream modes don't need padding. GCM is technically an AEAD mode but behaves like a stream cipher in this regard.
-        streamModes = Arrays.asList("GCM", "CTR", "CFB", "OFB");
+        List<String> commonBlockModes = Arrays.asList("CBC", "CTR", "CFB", "OFB");
+        List<String> aeadModes = Arrays.asList("GCM", "CCM", "EAX"); // Modes that provide authentication
 
-        // --- Initialize Paddings ---
-        supportedPaddings = Arrays.asList("PKCS7Padding", "NoPadding");
+        List<String> aesModes = new ArrayList<>();
+        aesModes.addAll(aeadModes);
+        aesModes.addAll(commonBlockModes);
+        Collections.sort(aesModes);
+        protocolToModes.put("AES", aesModes);
+        protocolToModes.put("Camellia", aesModes);
+        protocolToModes.put("Serpent", aesModes);
+        protocolToModes.put("Twofish", aesModes);
+        protocolToModes.put("ARIA", aesModes);
+
+        // Older/other ciphers generally don't support modern AEAD modes like GCM in standard implementations
+        protocolToModes.put("DESede", commonBlockModes);
+        protocolToModes.put("RC6", commonBlockModes);
+        protocolToModes.put("CAST6", commonBlockModes);
+        protocolToModes.put("SEED", commonBlockModes);
+        protocolToModes.put("Noekeon", commonBlockModes);
+
+        // Stream modes don't need padding. GCM is technically an AEAD mode but behaves like a stream cipher in this regard.
+        streamModes = Arrays.asList("GCM", "CTR", "CFB", "OFB", "CCM", "EAX");
+
+        // --- Initialize Paddings (Expanded List) ---
+        supportedPaddings = Arrays.asList(
+            "PKCS7Padding",
+            "ISO10126-2Padding",
+            "X923Padding",
+            "ISO7816-4Padding",
+            "ZeroBytePadding",
+            "TBCPadding" // Trailing-Bit-Compliment Padding
+        );
 
         // --- Initialize KDFs ---
         supportedKdfs = Arrays.asList("PBKDF2WithHmacSHA256", "Scrypt");
@@ -64,18 +93,32 @@ public class CipherInfo {
      * @return A list of integers representing key lengths in bits.
      */
     public static List<Integer> getValidKeyLengths(String cipher) {
-        if (supportedKeyLengths.containsKey(cipher)) {
-            return supportedKeyLengths.get(cipher);
-        }
-        return Collections.emptyList();
+        return supportedKeyLengths.getOrDefault(cipher, Collections.emptyList());
     }
 
     /**
-     * @return A list of all supported block cipher modes.
+     * Gets the supported block cipher modes for a given cipher protocol.
+     * @param protocol The cipher protocol (e.g., "AES").
+     * @return A list of supported modes for that protocol.
      */
-    public static List<String> getSupportedModes() {
-        return new ArrayList<>(supportedModes);
+    public static List<String> getSupportedModes(String protocol) {
+        return protocolToModes.getOrDefault(protocol, Collections.emptyList());
     }
+
+    /**
+     * Gets a comprehensive list of all unique supported modes across all protocols.
+     * @return A sorted list of unique mode names.
+     */
+    public static List<String> getAllSupportedModes() {
+        Set<String> allModes = new LinkedHashSet<>();
+        for (List<String> modes : protocolToModes.values()) {
+            allModes.addAll(modes);
+        }
+        List<String> sortedModes = new ArrayList<>(allModes);
+        Collections.sort(sortedModes);
+        return sortedModes;
+    }
+
 
     /**
      * @return A list of all supported padding schemes.

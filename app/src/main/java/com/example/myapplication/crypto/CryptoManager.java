@@ -1,4 +1,3 @@
-
 package com.example.myapplication.crypto;
 
 import android.content.Context;
@@ -7,7 +6,6 @@ import org.json.JSONException;
 
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
-import javax.crypto.CipherOutputStream;
 import javax.crypto.Mac;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.IvParameterSpec;
@@ -39,14 +37,7 @@ public class CryptoManager {
     private static final int SALT_LENGTH_BYTES = 16;
     private static final int IV_LENGTH_BYTES = 16;
     private static final int MAC_TAG_LENGTH_BYTES = 32;
-    private static final int SIMPLE_KDF_ITERATION_COUNT = 65536;
-
-    // Constants for simple mode
-    private static final String SIMPLE_KEY_DERIVATION_ALGORITHM = "PBKDF2WithHmacSHA256";
-    private static final String SIMPLE_ENCRYPTION_ALGORITHM = "AES";
-    private static final String SIMPLE_CIPHER_TRANSFORMATION = "AES/CTR/NoPadding";
-    private static final int SIMPLE_KEY_LENGTH_BITS = 256;
-    private static final int SIMPLE_CHUNK_SIZE = 64 * 1024;
+    private static final int KDF_ITERATION_COUNT = 65536;
 
     public interface HeaderCallback {
         void onHeaderRead(FileHeader header);
@@ -60,10 +51,23 @@ public class CryptoManager {
 
     // --- PUBLIC API ---
 
+    /**
+     * Encrypts a stream using predefined "simple" settings (AES-256-CTR) with a file header.
+     */
     public void encrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean useMultithreading) {
         new Thread(() -> {
             try {
-                streamEncryptSimple(password, inputStream, totalSize, outputStream);
+                // Define the "Simple" mode options, now using the advanced format.
+                CryptoOptions simpleOptions = new CryptoOptions(
+                    "AES",
+                    256,
+                    "CTR",
+                    "NoPadding",
+                    "PBKDF2WithHmacSHA256",
+                    64 * 1024, // 64KB chunk size
+                    useMultithreading ? Math.max(1, Runtime.getRuntime().availableProcessors()) : 1
+                );
+                streamEncryptAdvanced(password, inputStream, totalSize, outputStream, simpleOptions);
                 listener.onSuccess("Encryption successful.");
             } catch (Exception e) {
                 e.printStackTrace();
@@ -72,10 +76,14 @@ public class CryptoManager {
         }).start();
     }
 
+    /**
+     * Decrypts any file (simple or advanced) by reading its header first.
+     */
     public void decrypt(String password, InputStream inputStream, long totalSize, OutputStream outputStream, boolean useMultithreading) {
         new Thread(() -> {
             try {
-                streamDecryptSimple(password, inputStream, totalSize, outputStream);
+                // The advanced decryption method reads the header and decrypts automatically.
+                streamDecryptAdvanced(password, inputStream, totalSize, outputStream);
                 listener.onSuccess("Decryption successful.");
             } catch (Exception e) {
                 e.printStackTrace();
@@ -84,6 +92,9 @@ public class CryptoManager {
         }).start();
     }
 
+    /**
+     * Encrypts a stream using user-specified advanced options.
+     */
     public void encryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream, CryptoOptions options) {
         new Thread(() -> {
             try {
@@ -96,18 +107,17 @@ public class CryptoManager {
         }).start();
     }
     
+    /**
+     * Decrypts any file (simple or advanced) by reading its header first.
+     */
     public void decryptAdvanced(String password, InputStream inputStream, long totalSize, OutputStream outputStream) {
-        new Thread(() -> {
-            try {
-                streamDecryptAdvanced(password, inputStream, totalSize, outputStream);
-                listener.onSuccess("Advanced decryption and verification successful.");
-            } catch (Exception e) {
-                e.printStackTrace();
-                listener.onError("Advanced decryption failed: " + e.getMessage());
-            }
-        }).start();
+        // This is just an alias for the standard decrypt method now.
+        decrypt(password, inputStream, totalSize, outputStream, false);
     }
     
+    /**
+     * Asynchronously reads and parses the header from an encrypted file stream.
+     */
     public void readHeader(InputStream in, HeaderCallback callback) {
         new Thread(() -> {
             try {
@@ -119,54 +129,7 @@ public class CryptoManager {
         }).start();
     }
 
-    // --- STREAMING METHODS ---
-
-    private void streamEncryptSimple(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
-        byte[] salt = generateRandom(SALT_LENGTH_BYTES);
-        out.write(salt);
-
-        SecretKeySpec key = deriveKeySimple(password, salt);
-        
-        byte[] iv = generateRandom(IV_LENGTH_BYTES);
-        out.write(iv);
-
-        Cipher cipher = Cipher.getInstance(SIMPLE_CIPHER_TRANSFORMATION, PROVIDER);
-        cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
-
-        try (CipherOutputStream cipherOut = new CipherOutputStream(out, cipher)) {
-            byte[] buffer = new byte[SIMPLE_CHUNK_SIZE];
-            int bytesRead;
-            long processedBytes = 0;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                cipherOut.write(buffer, 0, bytesRead);
-                processedBytes += bytesRead;
-                reportProgress(processedBytes, totalSize);
-            }
-        }
-    }
-
-    private void streamDecryptSimple(String password, InputStream in, long totalSize, OutputStream out) throws Exception {
-        byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
-        SecretKeySpec key = deriveKeySimple(password, salt);
-
-        byte[] iv = readBytes(in, IV_LENGTH_BYTES);
-        
-        Cipher cipher = Cipher.getInstance(SIMPLE_CIPHER_TRANSFORMATION, PROVIDER);
-        cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
-
-        long encryptedDataSize = totalSize - SALT_LENGTH_BYTES - IV_LENGTH_BYTES;
-
-        try (CipherInputStream cipherIn = new CipherInputStream(in, cipher)) {
-            byte[] buffer = new byte[SIMPLE_CHUNK_SIZE];
-            int bytesRead;
-            long processedBytes = 0;
-            while ((bytesRead = cipherIn.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
-                processedBytes += bytesRead;
-                reportProgress(processedBytes, encryptedDataSize);
-            }
-        }
-    }
+    // --- UNIFIED STREAMING METHODS ---
 
     private void streamEncryptAdvanced(String password, InputStream in, long totalSize, OutputStream out, CryptoOptions options) throws Exception {
         File tempEncryptedFile = null;
@@ -186,7 +149,7 @@ public class CryptoManager {
             SecretKeySpec macKey = keys[1];
 
             // 3. Write Salt and IV
-            byte[] iv = generateRandom(IV_LENGTH_BYTES);
+            byte[] iv = generateRandom(options.getIvLengthBytes());
             out.write(salt);
             out.write(iv);
             listener.onLog("Salt and IV written.");
@@ -253,7 +216,7 @@ public class CryptoManager {
 
             // 2. Read Salt and IV
             byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
-            byte[] iv = readBytes(in, IV_LENGTH_BYTES);
+            byte[] iv = readBytes(in, options.getIvLengthBytes());
             listener.onLog("Salt and IV read.");
 
             // 3. Derive keys using parameters from header
@@ -261,7 +224,7 @@ public class CryptoManager {
             SecretKeySpec encKey = keys[0];
             SecretKeySpec macKey = keys[1];
 
-            // 4. Stream ciphertext + HMAC to a temp file
+            // 4. Stream ciphertext + HMAC to a temp file for verification
             listener.onLog("Buffering encrypted content to temporary file...");
             tempCiphertextData = File.createTempFile("dec_adv", ".tmp", context.getCacheDir());
             long ciphertextAndMacSize = 0;
@@ -289,7 +252,7 @@ public class CryptoManager {
             }
             listener.onLog("HMAC verification successful.");
 
-            // 6. Decrypt from temp file
+            // 6. Decrypt from temp file if verification passes
             listener.onLog("Decrypting data...");
             Cipher cipher = Cipher.getInstance(options.getCipherTransformation(), PROVIDER);
             cipher.init(Cipher.DECRYPT_MODE, encKey, new IvParameterSpec(iv));
@@ -299,11 +262,10 @@ public class CryptoManager {
                     byte[] buffer = new byte[options.getChunkSize()];
                     int bytesRead;
                     long processedBytes = 0;
-                    while ((bytesRead = cipherIn.read(buffer)) != -1) {
-                        if (processedBytes + bytesRead > ciphertext_size) {
-                             out.write(buffer, 0, (int)(ciphertext_size - processedBytes));
-                             break;
-                        }
+                    while (processedBytes < ciphertext_size) {
+                        int toRead = (int) Math.min(buffer.length, ciphertext_size - processedBytes);
+                        bytesRead = cipherIn.read(buffer, 0, toRead);
+                        if (bytesRead == -1) break; // End of stream
                         out.write(buffer, 0, bytesRead);
                         processedBytes += bytesRead;
                         reportProgress(processedBytes, ciphertext_size);
@@ -330,21 +292,12 @@ public class CryptoManager {
         return FileHeader.fromJson(jsonString);
     }
 
-    private SecretKeySpec deriveKeySimple(String password, byte[] salt) throws Exception {
-        SecretKeyFactory factory = SecretKeyFactory.getInstance(SIMPLE_KEY_DERIVATION_ALGORITHM);
-        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, SIMPLE_KDF_ITERATION_COUNT, SIMPLE_KEY_LENGTH_BITS);
-        byte[] keyBytes = factory.generateSecret(spec).getEncoded();
-        SecretKeySpec secretKey = new SecretKeySpec(keyBytes, SIMPLE_ENCRYPTION_ALGORITHM);
-        Arrays.fill(keyBytes, (byte) 0); // zero out key material
-        return secretKey;
-    }
-
     private SecretKeySpec[] deriveKeysAdvanced(String password, byte[] salt, CryptoOptions options) throws Exception {
         listener.onLog("Deriving keys with " + options.getKdf() + ", " + options.getKeyLength() + "-bit key...");
-        int macKeyLengthBits = 256;
+        int macKeyLengthBits = 256; // Using a fixed-size HMAC key for simplicity
         int derivedKeyLength = options.getKeyLength() + macKeyLengthBits;
         SecretKeyFactory factory = SecretKeyFactory.getInstance(options.getKdf());
-        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, SIMPLE_KDF_ITERATION_COUNT, derivedKeyLength);
+        PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, KDF_ITERATION_COUNT, derivedKeyLength);
         byte[] derivedKeyBytes = factory.generateSecret(spec).getEncoded();
 
         int encKeySizeBytes = options.getKeyLength() / 8;
@@ -364,9 +317,11 @@ public class CryptoManager {
                 in.skip(offset);
             }
             byte[] buffer = new byte[chunkSize];
-            int bytesRead;
             long remaining = length;
-            while (remaining > 0 && (bytesRead = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) != -1) {
+            while (remaining > 0) {
+                int toRead = (int) Math.min(buffer.length, remaining);
+                int bytesRead = in.read(buffer, 0, toRead);
+                 if (bytesRead == -1) break; // End of file
                 mac.update(buffer, 0, bytesRead);
                 remaining -= bytesRead;
             }
@@ -380,7 +335,7 @@ public class CryptoManager {
             byte[] data = new byte[length];
             int bytesRead = raf.read(data);
             if (bytesRead != length) {
-                throw new Exception("Could not read expected bytes from file.");
+                throw new Exception("Could not read expected number of bytes from file.");
             }
             return data;
         }
@@ -394,13 +349,13 @@ public class CryptoManager {
 
     private byte[] readBytes(InputStream in, int length) throws Exception {
         byte[] bytes = new byte[length];
-        int bytesRead = 0;
         int offset = 0;
-        while(offset < length && (bytesRead = in.read(bytes, offset, length - offset)) != -1) {
+        while(offset < length) {
+            int bytesRead = in.read(bytes, offset, length - offset);
+            if (bytesRead == -1) {
+                throw new Exception("Could not read required bytes from stream (end of stream reached). Expected " + length + ", got " + offset);
+            }
             offset += bytesRead;
-        }
-        if (offset < length) {
-            throw new Exception("Could not read required bytes from stream. Expected " + length + ", got " + offset);
         }
         return bytes;
     }

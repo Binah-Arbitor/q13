@@ -132,51 +132,81 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupSpinners() {
+        // Protocol Spinner
         ArrayAdapter<String> protocolAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedCiphers());
         protocolSpinner.setAdapter(protocolAdapter);
 
-        updateKeyLengthSpinner();
-        updateModeAndPaddingSpinners();
-
+        // KDF Spinner
         ArrayAdapter<String> kdfAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedKdfs());
         kdfSpinner.setAdapter(kdfAdapter);
 
-        protocolSpinner.setOnItemSelectedListener(new SimpleItemSelectedListener() {
+        // Set up listeners to link spinners together
+        protocolSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                updateKeyLengthSpinner();
+                updateKeyLengthAndModeSpinners();
             }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        modeSpinner.setOnItemSelectedListener(new SimpleItemSelectedListener() {
+        modeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
              @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updatePaddingSpinner();
             }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) { }
         });
+
+        // Initial population
+        updateKeyLengthAndModeSpinners();
     }
     
-    private void updateKeyLengthSpinner() {
-        String selectedCipher = protocolSpinner.getSelectedItem().toString();
-        List<Integer> keyLengths = CipherInfo.getValidKeyLengths(selectedCipher);
+    /**
+     * Updates the Key Length and Mode spinners based on the selected protocol.
+     */
+    private void updateKeyLengthAndModeSpinners() {
+        String selectedProtocol = protocolSpinner.getSelectedItem().toString();
+
+        // Update Key Length Spinner
+        List<Integer> keyLengths = CipherInfo.getValidKeyLengths(selectedProtocol);
         ArrayAdapter<Integer> keyLengthAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, keyLengths);
         keyLengthSpinner.setAdapter(keyLengthAdapter);
-    }
 
-    private void updateModeAndPaddingSpinners() {
-        ArrayAdapter<String> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedModes());
+        // Update Mode Spinner
+        List<String> modes = CipherInfo.getSupportedModes(selectedProtocol);
+        ArrayAdapter<String> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes);
         modeSpinner.setAdapter(modeAdapter);
+
+        // After updating modes, the padding spinner must also be updated.
         updatePaddingSpinner();
     }
 
+    /**
+     * Updates the Padding spinner based on the selected mode.
+     * If the mode is a stream cipher, padding is disabled and set to "NoPadding".
+     * Otherwise, a list of supported paddings is shown.
+     */
     private void updatePaddingSpinner() {
+        if (modeSpinner.getSelectedItem() == null) { // Check if a mode is available
+            paddingSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"-"}));
+            paddingSpinner.setEnabled(false);
+            return;
+        }
+
         String selectedMode = modeSpinner.getSelectedItem().toString();
         ArrayAdapter<String> paddingAdapter;
+
         if (CipherInfo.isStreamMode(selectedMode)) {
+            // Stream modes do not use padding
             paddingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"NoPadding"});
             paddingSpinner.setEnabled(false);
         } else {
-            paddingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CipherInfo.getSupportedPaddings());
+            // Block modes can use various paddings
+            List<String> paddings = CipherInfo.getSupportedPaddings();
+            paddings.add(0, "PKCS7Padding"); // Ensure PKCS7 is a default/first option
+            paddingAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, paddings);
             paddingSpinner.setEnabled(true);
         }
         paddingSpinner.setAdapter(paddingAdapter);
@@ -377,10 +407,5 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
 
     private void scrollToBottom() {
         consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN));
-    }
-    
-    private static abstract class SimpleItemSelectedListener implements AdapterView.OnItemSelectedListener {
-        @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {}
-        @Override public void onNothingSelected(AdapterView<?> parent) {} 
     }
 }

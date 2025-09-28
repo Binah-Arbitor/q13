@@ -2,6 +2,7 @@ package com.example.myapplication.crypto;
 
 import android.content.Context;
 import android.net.Uri;
+import android.os.ParcelFileDescriptor;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.json.JSONException;
 
@@ -337,14 +338,16 @@ public class CryptoManager {
 
     private void replaceFile(File sourceFile, Uri targetUri) throws Exception {
         try (FileInputStream fis = new FileInputStream(sourceFile);
-             OutputStream out = context.getContentResolver().openOutputStream(targetUri, "w")) {
-            if (out == null) {
-                throw new Exception("Failed to open output stream to overwrite URI.");
+             ParcelFileDescriptor pfd = context.getContentResolver().openFileDescriptor(targetUri, "wt")) {
+            if (pfd == null) {
+                 throw new Exception("Failed to open file descriptor to overwrite URI.");
             }
-            byte[] buffer = new byte[8192];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
+            try (OutputStream out = new FileOutputStream(pfd.getFileDescriptor())) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
             }
         }
     }

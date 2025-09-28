@@ -312,8 +312,7 @@ public class SimpleDecryptionActivity extends BaseActivity implements CryptoList
         runOnUiThread(() -> {
             setUiEnabled(true);
             statusTextView.setVisibility(View.VISIBLE);
-            statusTextView.setText("✗ ERROR
-");
+            statusTextView.setText("✗ ERROR");
             statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red));
             consoleTextView.append("\n[ERROR] " + errorMessage + "\n");
             scrollToBottom();

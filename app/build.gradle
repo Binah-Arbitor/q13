@@ -24,11 +24,9 @@ android {
         }
     }
     compileOptions {
-        // Enable support for Java 8 language features
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-        // Enable desugaring for Java 8+ APIs
-        coreLibraryDesugaringEnabled true
+        // Enable support for Java 17 language features
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
@@ -42,9 +40,6 @@ dependencies {
     // Bouncy Castle for PGP encryption
     implementation 'org.bouncycastle:bcprov-jdk18on:1.77'
     implementation 'org.bouncycastle:bcpg-jdk18on:1.77'
-
-    // Desugaring library for Java 8+ API support on older Android versions
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     // Testing libraries
     testImplementation 'junit:junit:4.13.2'

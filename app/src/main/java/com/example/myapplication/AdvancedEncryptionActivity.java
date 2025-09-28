@@ -284,6 +284,7 @@ public class AdvancedEncryptionActivity extends BaseActivity implements CryptoLi
     }
 
     private void setupBottomNav() {
+        bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
         bottomNav.setOnItemSelectedListener(item -> {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_advanced_encrypt) {

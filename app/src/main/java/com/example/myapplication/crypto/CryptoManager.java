@@ -213,6 +213,15 @@ public class CryptoManager {
         byte[] salt = readBytes(in, SALT_LENGTH_BYTES);
         byte[] iv = readBytes(in, options.getIvLengthBytes());
         listener.onLog("Salt and IV read.");
+        
+        // [임시코드] 디버깅 로그 시작
+        listener.onLog("--- DECRYPTION DEBUG START ---");
+        listener.onLog("[임시코드] Total file size: " + totalSize);
+        listener.onLog("[임시코드] Header size: " + headerBytes.length);
+        listener.onLog("[임시코드] Salt size: " + SALT_LENGTH_BYTES);
+        listener.onLog("[임시코드] IV size: " + options.getIvLengthBytes());
+        listener.onLog("[임시코드] HMAC tag size: " + MAC_TAG_LENGTH_BYTES);
+        // [임시코드] 디버깅 로그 끝
 
         // 3. Derive keys
         SecretKeySpec[] keys = deriveKeys(password, salt, options);
@@ -233,6 +242,11 @@ public class CryptoManager {
         listener.onLog("Decrypting and verifying file...");
 
         long ciphertextLength = totalSize - headerBytes.length - SALT_LENGTH_BYTES - options.getIvLengthBytes() - MAC_TAG_LENGTH_BYTES;
+        
+        // [임시코드] 디버깅 로그 시작
+        listener.onLog("[임시코드] Calculated ciphertext length: " + ciphertextLength);
+        // [임시코드] 디버깅 로그 끝
+
         if (ciphertextLength < 0) {
             throw new SecurityException("Invalid file size. The file is smaller than its metadata indicates.");
         }
@@ -240,12 +254,20 @@ public class CryptoManager {
         byte[] buffer = new byte[options.getChunkSize()];
         long remaining = ciphertextLength;
         int bytesRead;
+        long totalPlaintextBytesWritten = 0; // [임시코드]
 
         while (remaining > 0 && (bytesRead = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) != -1) {
+             // [임시코드] 디버깅 로그 시작
+            if (remaining < (2L * options.getChunkSize()) || bytesRead < buffer.length) {
+                listener.onLog("[임시코드] Loop: bytesRead=" + bytesRead + ", remaining=" + remaining);
+            }
+            // [임시코드] 디버깅 로그 끝
+            
             mac.update(buffer, 0, bytesRead);
             byte[] plaintext = cipher.update(buffer, 0, bytesRead);
             if (plaintext != null) {
                 out.write(plaintext);
+                totalPlaintextBytesWritten += plaintext.length; // [임시코드]
             }
             remaining -= bytesRead;
         }
@@ -253,11 +275,25 @@ public class CryptoManager {
         byte[] finalPlaintextBytes = cipher.doFinal();
         if (finalPlaintextBytes != null) {
             out.write(finalPlaintextBytes);
+            // [임시코드] 디버깅 로그 시작
+            listener.onLog("[임시코드] Final plaintext bytes from doFinal(): " + finalPlaintextBytes.length);
+            totalPlaintextBytesWritten += finalPlaintextBytes.length;
+            // [임시코드] 디버깅 로그 끝
         }
+        
+        // [임시코드] 디버깅 로그 시작
+        listener.onLog("[임시코드] Total plaintext bytes written to temp file: " + totalPlaintextBytesWritten);
+        // [임시코드] 디버깅 로그 끝
 
         // 6. Final HMAC verification
         byte[] storedMac = readBytes(in, MAC_TAG_LENGTH_BYTES);
         byte[] calculatedMac = mac.doFinal();
+        
+        // [임시코드] 디버깅 로그 시작
+        listener.onLog("[임시코드] Stored MAC: " + bytesToHex(storedMac));
+        listener.onLog("[임시코드] Calculated MAC: " + bytesToHex(calculatedMac));
+        listener.onLog("--- DECRYPTION DEBUG END ---");
+        // [임시코드] 디버깅 로그 끝
 
         if (!MessageDigest.isEqual(storedMac, calculatedMac)) {
             throw new SecurityException("HMAC validation failed: File is corrupt or has been tampered with.");
@@ -343,5 +379,18 @@ public class CryptoManager {
                 listener.onProgress(progress);
             }
         }
+    }
+    
+    // [임시코드] 바이트 배열을 16진수 문자열로 변환하는 헬퍼
+    private String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "null";
+        final char[] hexArray = "0123456789ABCDEF".toCharArray();
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = hexArray[v >>> 4];
+            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
+        }
+        return new String(hexChars);
     }
 }

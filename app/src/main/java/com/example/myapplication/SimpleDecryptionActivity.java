@@ -54,11 +54,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         setupFilePicker();
         setupSpinner();
         setupEventListeners();
-        
-        findViewById(R.id.bottom_nav).setOnClickListener(v -> {
-            Intent intent = new Intent(this, AdvancedDecryptionActivity.class);
-            startActivity(intent);
-        });
     }
 
     private void initializeViews() {
@@ -141,7 +136,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
             executor.submit(() -> {
                 try {
-                    // Always use null for manualOptions in simple mode
                     cryptoManager.decrypt(sourcePath, destPath, password, null, chunkSize, threads, this);
                 } catch (Exception e) {
                     onError("Decryption failed", e);
@@ -160,6 +154,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             decryptButton.setEnabled(enabled);
             modeSpinner.setEnabled(enabled);
             progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+            if(enabled) progressBar.setProgress(0);
         });
     }
 
@@ -167,7 +162,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         runOnUiThread(() -> {
             consoleTextView.setText("");
             statusTextView.setVisibility(View.GONE);
-            progressBar.setProgress(0);
         });
     }
 
@@ -245,7 +239,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         });
     }
 
-    @Override
     public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");

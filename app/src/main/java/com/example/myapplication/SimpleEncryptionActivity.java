@@ -55,11 +55,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         setupFilePicker();
         setupSpinner();
         setupEventListeners();
-        
-        findViewById(R.id.bottom_nav).setOnClickListener(v -> {
-            Intent intent = new Intent(this, AdvancedEncryptionActivity.class);
-            startActivity(intent);
-        });
     }
 
     private void initializeViews() {
@@ -126,26 +121,25 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
 
         try {
-            CryptoOptions options = CryptoOptions.getDefault(); // AES-256-GCM
+            CryptoOptions options = CryptoOptions.getDefault();
 
             int threads;
             if ("Performance".equals(selectedMode)) {
-                options.setMode(CryptoOptions.CipherMode.CTR); // Must use CTR for parallelism
-                threads = Math.max(2, Runtime.getRuntime().availableProcessors());
-            } else { // "Efficiency"
+                 threads = Math.max(2, Runtime.getRuntime().availableProcessors());
+            } else { 
                 threads = 1;
             }
 
             int chunkSize = 1024 * 1024; // 1 MB
 
             String sourcePath = getPathFromUri(selectedFileUri);
-            if (sourcePath == null) return; // Error handled in getPathFromUri
+            if (sourcePath == null) return; 
             
             String destPath = sourcePath + ".enc";
 
             resetUiState();
             setUiEnabled(false);
-            onLog("Starting encryption (" + options.getMode() + ", " + selectedMode + " Mode, " + threads + " threads)...");
+            onLog("Starting encryption...");
 
             executor.submit(() -> {
                 try {
@@ -252,7 +246,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         });
     }
 
-    @Override
     public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");

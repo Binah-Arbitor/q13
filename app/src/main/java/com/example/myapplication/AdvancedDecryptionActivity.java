@@ -212,9 +212,8 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         if (selectedFileUri == null) return;
         resetUiState();
         
-        // Asynchronously copy file and read header
         new Thread(() -> {
-            tempSourcePath = getPathFromUri(selectedFileUri); // This copies the file to a temporary location
+            tempSourcePath = getPathFromUri(selectedFileUri); 
             if (tempSourcePath != null) {
                 try (InputStream fis = new FileInputStream(tempSourcePath)) {
                     FileHeader header = FileHeader.fromStream(fis);
@@ -222,7 +221,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
                 } catch (Exception e) {
                     runOnUiThread(() -> {
                         headerInfoLayout.setVisibility(View.GONE);
-                        onLog("Could not read file header. It might be corrupted or not an encrypted file from this app. Try manual mode.");
+                        onLog("Could not read file header. Try manual mode.");
                     });
                 }
             }
@@ -295,7 +294,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         }
     }
     
-    // Spinner update logic (similar to AdvancedEncryptionActivity)
     private void updateDependantSpinners() {
         updateKeyLengthSpinner();
         updateBlockSizeSpinner();
@@ -348,18 +346,18 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         }
 
         CryptoOptions.CipherMode selectedMode = (CryptoOptions.CipherMode) selectedItem;
-        paddingSpinner.setEnabled(!selectedMode.isStreamMode());
-        if (!selectedMode.isStreamMode()){
+        if (selectedMode.isStreamMode()) {
+             ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"NoPadding"});
+            paddingSpinner.setAdapter(adapter);
+            paddingSpinner.setEnabled(false);
+        } else {
              ArrayAdapter<CryptoOptions.Padding> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, CryptoOptions.Padding.values());
             adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             paddingSpinner.setAdapter(adapter);
-        } else {
-            ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"NoPadding"});
-            paddingSpinner.setAdapter(adapter);
-        }
+            paddingSpinner.setEnabled(true);
+        } 
     }
     
-    // Other helper methods
     private void setUiEnabled(boolean enabled) {
         runOnUiThread(() -> {
             passwordInput.setEnabled(enabled);
@@ -368,16 +366,17 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             manualModeCheckbox.setEnabled(enabled);
             threadCountSlider.setEnabled(enabled);
             chunkSizeSlider.setEnabled(enabled);
-            // Also disable/enable manual spinners if manual mode is active
-            if(manualModeCheckbox.isChecked()) {
-                protocolSpinner.setEnabled(enabled);
-                keyLengthSpinner.setEnabled(enabled);
-                blockSpinner.setEnabled(enabled);
-                modeSpinner.setEnabled(enabled);
-                paddingSpinner.setEnabled(enabled);
-                kdfSpinner.setEnabled(enabled);
-            }
+            
+            boolean manualSpinnersEnabled = enabled && manualModeCheckbox.isChecked();
+            protocolSpinner.setEnabled(manualSpinnersEnabled);
+            keyLengthSpinner.setEnabled(manualSpinnersEnabled);
+            blockSpinner.setEnabled(manualSpinnersEnabled);
+            modeSpinner.setEnabled(manualSpinnersEnabled);
+            paddingSpinner.setEnabled(manualSpinnersEnabled);
+            kdfSpinner.setEnabled(manualSpinnersEnabled);
+            
             progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+            if(enabled) progressBar.setProgress(0);
         });
     }
     
@@ -385,7 +384,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         runOnUiThread(() -> {
             consoleTextView.setText("");
             statusTextView.setVisibility(View.GONE);
-            progressBar.setProgress(0);
         });
     }
 
@@ -461,7 +459,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         });
     }
 
-    @Override
     public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");

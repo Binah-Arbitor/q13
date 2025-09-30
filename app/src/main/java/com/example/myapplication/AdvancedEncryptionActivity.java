@@ -35,7 +35,6 @@ import java.util.stream.Collectors;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
-    // ... (same member variables)
     private Spinner protocolSpinner, keyLengthSpinner, blockSpinner, modeSpinner, paddingSpinner, kdfSpinner;
     private SeekBar threadCountSlider, chunkSizeSlider;
     private TextView threadCountValueTextView, chunkSizeValueTextView;
@@ -63,11 +62,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         setupFilePicker();
         setupSpinners();
         setupEventListeners();
-        
-        findViewById(R.id.bottom_nav).setOnClickListener(v -> {
-            Intent intent = new Intent(this, SimpleEncryptionActivity.class);
-            startActivity(intent);
-        });
     }
 
     private void initializeViews() {
@@ -179,7 +173,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     
     private void updateDependantSpinners() {
         updateKeyLengthSpinner();
-        updateBlockSizeSpinner(); // This will trigger updates for mode and padding
+        updateBlockSizeSpinner();
     }
     
     private void updateKeyLengthSpinner() {
@@ -219,8 +213,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
         List<CryptoOptions.CipherMode> supportedModes = selectedProtocol.getSupportedModes();
         
-        // XTS mode requires key length to be twice the block size, which is a complex dependency.
-        // Simplified: just filter based on protocol for now.
         List<CryptoOptions.CipherMode> modes = supportedModes.stream()
                 .filter(m -> selectedProtocol.isModeSupported(m))
                 .collect(Collectors.toList());
@@ -258,7 +250,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void handleEncryption() {
-        // ... (validation logic is the same)
         if (selectedFileUri == null) {
             onError("Please select a file.", null);
             return;
@@ -323,6 +314,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             fileSelectButton.setEnabled(enabled);
             encryptButton.setEnabled(enabled);
             progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+            if(enabled) progressBar.setProgress(0);
         });
     }
     
@@ -330,7 +322,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         runOnUiThread(() -> {
             consoleTextView.setText("");
             statusTextView.setVisibility(View.GONE);
-            progressBar.setProgress(0);
         });
     }
 
@@ -417,7 +408,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         });
     }
 
-    @Override
     public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");

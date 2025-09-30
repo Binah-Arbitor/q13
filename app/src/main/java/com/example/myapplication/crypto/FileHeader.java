@@ -1,88 +1,123 @@
 package com.example.myapplication.crypto;
 
-import org.json.JSONException;
-import org.json.JSONObject;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.io.Serializable;
 
-import java.nio.charset.StandardCharsets;
-
-/**
- * Represents the header of an encrypted file.
- * This header contains metadata (in JSON format) required to decrypt the file,
- * such as the cryptographic options used.
- * The on-disk format is: [4-byte header length] [UTF-8 JSON header]
- */
-public class FileHeader {
+public class FileHeader implements Serializable {
+    private static final long serialVersionUID = 3L;
 
     private final CryptoOptions options;
+    private final byte[] salt;
+    private final byte[] iv;
 
-    public FileHeader(CryptoOptions options) {
+    private transient int headerSize = 0;
+
+    public FileHeader(CryptoOptions options, byte[] salt, byte[] iv) {
         this.options = options;
+        this.salt = salt;
+        this.iv = iv;
     }
 
+    public int writeTo(OutputStream os) throws IOException {
+        try (DataOutputStream dos = new DataOutputStream(os)) {
+            dos.writeLong(serialVersionUID);
+            try (ObjectOutputStream oos = new ObjectOutputStream(dos)) {
+                oos.writeObject(options);
+            }
+            dos.writeInt(salt.length);
+            dos.write(salt);
+            dos.writeInt(iv.length);
+            dos.write(iv);
+            dos.flush();
+            this.headerSize = dos.size();
+        }
+        return this.headerSize;
+    }
+
+    public static FileHeader readFrom(InputStream is) throws IOException, ClassNotFoundException {
+        DataInputStream dis = new DataInputStream(is);
+        long fileVersion = dis.readLong();
+        if (fileVersion != serialVersionUID) {
+            throw new IOException("Incompatible file header version. Expected " + serialVersionUID + ", but found " + fileVersion);
+        }
+
+        ObjectInputStream ois = new ObjectInputStream(dis);
+        CryptoOptions options = (CryptoOptions) ois.readObject();
+
+        int saltLength = dis.readInt();
+        byte[] salt = new byte[saltLength];
+        dis.readFully(salt);
+
+        int ivLength = dis.readInt();
+        byte[] iv = new byte[ivLength];
+        dis.readFully(iv);
+
+        FileHeader header = new FileHeader(options, salt, iv);
+        // The size isn't directly available here, but could be calculated if needed.
+        return header;
+    }
+
+    /**
+     * Peeks into an encrypted file to read just the CryptoOptions from the header.
+     * This is useful for the CryptoManager to decide which decryption strategy to use
+     * without reading the entire file or header.
+     *
+     * @param filePath The path to the encrypted file.
+     * @return The CryptoOptions stored in the file's header.
+     * @throws IOException if an I/O error occurs.
+     * @throws ClassNotFoundException if the CryptoOptions class cannot be found.
+     */
+    public static CryptoOptions peekOptions(String filePath) throws IOException, ClassNotFoundException {
+        try (FileInputStream fis = new FileInputStream(filePath);
+             DataInputStream dis = new DataInputStream(fis)) {
+
+            long fileVersion = dis.readLong();
+            if (fileVersion != serialVersionUID) {
+                throw new IOException("Cannot peek options: Incompatible file header version. Expected "
+                        + serialVersionUID + ", but found " + fileVersion);
+            }
+
+            // ObjectInputStream will read from the DataInputStream until the object is fully deserialized.
+            // It's crucial that the underlying stream (dis/fis) is not closed prematurely.
+            try (ObjectInputStream ois = new ObjectInputStream(dis)) {
+                 return (CryptoOptions) ois.readObject();
+            }
+        }
+    }
+
+    // Standard Getters
     public CryptoOptions getOptions() {
         return options;
     }
 
-    /**
-     * Serializes the header's options into a JSON string.
-     * @return A string in JSON format representing the crypto options.
-     * @throws JSONException if JSON creation fails.
-     */
-    public String toJson() throws JSONException {
-        JSONObject json = new JSONObject();
-        json.put("protocol", options.getProtocol());
-        json.put("keyLength", options.getKeyLength());
-        json.put("mode", options.getMode());
-        json.put("padding", options.getPadding());
-        json.put("kdf", options.getKdf());
-        json.put("chunkSize", options.getChunkSize());
-        json.put("threadCount", options.getThreadCount());
-        return json.toString();
+    public byte[] getSalt() {
+        return salt;
     }
 
-    /**
-     * Serializes the header into a byte array for writing to a file.
-     * The format is a 4-byte length prefix followed by the JSON data.
-     * @return A byte array representing the full header (length + JSON).
-     * @throws JSONException If JSON serialization fails.
-     */
-    public byte[] toBytes() throws JSONException {
-        byte[] jsonBytes = toJson().getBytes(StandardCharsets.UTF_8);
-        byte[] headerBytes = new byte[4 + jsonBytes.length];
-
-        // Prepend the 4-byte length header
-        System.arraycopy(intToBytes(jsonBytes.length), 0, headerBytes, 0, 4);
-        System.arraycopy(jsonBytes, 0, headerBytes, 4, jsonBytes.length);
-
-        return headerBytes;
+    public byte[] getIv() {
+        return iv;
     }
 
-    /**
-     * Parses a JSON string and creates a FileHeader object from it.
-     * @param jsonString The JSON data read from the file.
-     * @return A new FileHeader object.
-     * @throws JSONException If parsing fails or keys are missing.
-     */
-    public static FileHeader fromJson(String jsonString) throws JSONException {
-        JSONObject json = new JSONObject(jsonString);
-        CryptoOptions options = new CryptoOptions(
-            json.getString("protocol"),
-            json.getInt("keyLength"),
-            json.getString("mode"),
-            json.getString("padding"),
-            json.getString("kdf"),
-            json.getInt("chunkSize"),
-            json.getInt("threadCount")
-        );
-        return new FileHeader(options);
-    }
-
-    private static byte[] intToBytes(int i) {
-        return new byte[] {
-            (byte) (i >> 24),
-            (byte) (i >> 16),
-            (byte) (i >> 8),
-            (byte) i
-        };
+    public int getHeaderSize() {
+        // This needs to be calculated properly. After a write, it's known. After a read, it needs to be tracked.
+        if (headerSize > 0) return headerSize;
+        // A rough estimation if not calculated.
+        try (java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+             ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+            oos.writeObject(options);
+            return 8 // version
+                 + bos.size() // options object
+                 + 4 + salt.length // salt
+                 + 4 + iv.length; // iv
+        } catch (IOException e) {
+            return 0; // fallback
+        }
     }
 }

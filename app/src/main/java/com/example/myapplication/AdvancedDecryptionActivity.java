@@ -1,7 +1,8 @@
 package com.example.myapplication;
 
-import android.app.Activity;
+import android.content.ContentResolver;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
@@ -11,70 +12,51 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.ActionBar;
-import androidx.core.content.ContextCompat;
+import androidx.appcompat.app.AppCompatActivity;
+
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
+import com.example.myapplication.crypto.CryptoOptions;
 import com.example.myapplication.crypto.FileHeader;
-import com.google.android.material.bottomnavigation.BottomNavigationView;
 
-public class AdvancedDecryptionActivity extends BaseActivity implements CryptoListener {
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-    // UI Elements
+public class AdvancedDecryptionActivity extends AppCompatActivity implements CryptoListener {
+
     private Button fileSelectButton, decryptButton;
-    private TextView selectedFileTextView, statusTextView;
+    private TextView selectedFileTextView, consoleTextView, threadCountValueTextView;
     private EditText passwordInput;
     private LinearLayout headerInfoLayout;
-    private TextView infoProtocol, infoKeyLength, infoMode, infoPadding, infoKdf;
+    private TextView infoProtocol, infoKeyLength, infoBlockSize, infoMode, infoPadding, infoKdf;
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
-    private TextView consoleTextView;
-    private BottomNavigationView bottomNav;
+    private SeekBar threadCountSlider;
 
-    // State
     private Uri selectedFileUri;
-    private CryptoManager cryptoManager;
-    private FileHeader detectedHeader;
-    private int lastProgress = -1;
-
+    private String currentFilePath;
+    private final CryptoManager cryptoManager = new CryptoManager();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<Intent> filePickerLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_advanced_decryption);
-        
+        setTitle("Advanced Decryption");
+
         initializeViews();
-        
-        ActionBar actionBar = getSupportActionBar();
-        if (actionBar != null) {
-            actionBar.setTitle("Advanced Decryption");
-        }
-
-        cryptoManager = new CryptoManager(this, getApplicationContext());
-
-        setupLaunchers();
-        setupBottomNav();
-
-        fileSelectButton.setOnClickListener(v -> checkPermissionsAndExecute(this::launchFilePicker));
-        decryptButton.setOnClickListener(v -> handleDecryption());
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (bottomNav != null) {
-            bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
-        }
-    }
-
-    @Override
-    protected boolean isActivityForAdvancedMode() {
-        return true;
+        setupFilePicker();
+        setupEventListeners();
     }
 
     private void initializeViews() {
@@ -85,93 +67,116 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
         headerInfoLayout = findViewById(R.id.header_info_layout);
         infoProtocol = findViewById(R.id.info_protocol);
         infoKeyLength = findViewById(R.id.info_key_length);
+        infoBlockSize = findViewById(R.id.info_block_size);
         infoMode = findViewById(R.id.info_mode);
         infoPadding = findViewById(R.id.info_padding);
         infoKdf = findViewById(R.id.info_kdf);
         progressBar = findViewById(R.id.progress_bar);
-        statusTextView = findViewById(R.id.status_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         consoleTextView = findViewById(R.id.console_textview);
-        bottomNav = findViewById(R.id.bottom_nav);
+        threadCountSlider = findViewById(R.id.thread_count_slider);
+        threadCountValueTextView = findViewById(R.id.thread_count_value_textview);
     }
 
-    private void setupLaunchers() {
+    private void setupFilePicker() {
         filePickerLauncher = registerForActivityResult(
-            new ActivityResultContracts.StartActivityForResult(),
-            result -> {
-                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                    onFileSelected(result.getData().getData());
-                }
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        onFileSelected(result.getData().getData());
+                    }
+                });
+    }
+
+    private void setupEventListeners() {
+        fileSelectButton.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            filePickerLauncher.launch(intent);
+        });
+
+        decryptButton.setOnClickListener(v -> handleDecryption());
+
+        int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors() * 2 - 2);
+        threadCountSlider.setMax(maxThreads - 1);
+        threadCountSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                threadCountValueTextView.setText(String.valueOf(progress + 1));
             }
-        );
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {} 
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        threadCountValueTextView.setText("1"); // Default to 1 thread
     }
 
     private void onFileSelected(Uri uri) {
-        if (uri == null) return;
         selectedFileUri = uri;
+        selectedFileTextView.setText(getFileName(uri));
+        headerInfoLayout.setVisibility(View.GONE);
+        onLog("File selected. Reading header...");
 
-        try {
-            final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
-            getContentResolver().takePersistableUriPermission(selectedFileUri, takeFlags);
-        } catch (SecurityException e) {
-            onLog("Could not get persistent permissions. May fail on reboot.");
-        }
-
-        String fileName = getFileName(uri);
-        selectedFileTextView.setText("Selected file: " + fileName);
-        onLog("File selected: " + fileName);
-        headerInfoLayout.setVisibility(View.GONE); // Hide old info
-
-        // CryptoManager now reads the header directly from the URI
-        cryptoManager.readHeader(selectedFileUri, new CryptoManager.HeaderCallback() {
-            @Override
-            public void onHeaderRead(FileHeader header) {
-                runOnUiThread(() -> displayHeaderInfo(header));
-            }
-
-            @Override
-            public void onError(Exception e) {
-                runOnUiThread(() -> AdvancedDecryptionActivity.this.onError("Failed to read file header: " + e.getMessage()));
+        setUiEnabled(false);
+        executor.submit(() -> {
+            currentFilePath = getPathFromUri(uri);
+            if (currentFilePath != null) {
+                try {
+                    CryptoOptions options = FileHeader.peekOptions(currentFilePath);
+                    runOnUiThread(() -> {
+                        displayHeaderInfo(options);
+                        setUiEnabled(true);
+                    });
+                } catch (Exception e) {
+                    onError("Failed to read or parse file header.", e);
+                }
+            } else {
+                 runOnUiThread(() -> setUiEnabled(true)); // Re-enable UI if path resolving fails
             }
         });
     }
 
-    private void displayHeaderInfo(FileHeader header) {
-        this.detectedHeader = header;
-        onLog("File header parsed successfully.");
-        infoProtocol.setText("Protocol: " + header.getOptions().getProtocol());
-        infoKeyLength.setText("Key Length: " + header.getOptions().getKeyLength() + "-bit");
-        infoMode.setText("Mode: " + header.getOptions().getMode());
-        infoPadding.setText("Padding: " + header.getOptions().getPadding());
-        infoKdf.setText("KDF: " + header.getOptions().getKdf());
+    private void displayHeaderInfo(CryptoOptions options) {
+        onLog("Header read successfully. Details below:");
+        infoProtocol.setText("Protocol: " + options.getProtocol().getName());
+        infoKeyLength.setText("Key Length: " + options.getKeyLength() + "-bit");
+        infoBlockSize.setText("Block Size: " + options.getBlockBitSize() + "-bit");
+        infoMode.setText("Mode: " + options.getMode().name());
+        infoPadding.setText("Padding: " + options.getPadding().name());
+        infoKdf.setText("KDF: " + options.getKdf());
         headerInfoLayout.setVisibility(View.VISIBLE);
     }
 
     private void handleDecryption() {
-        if (selectedFileUri == null) {
-            onError("Please select a file first.");
+        if (currentFilePath == null) {
+            onError("No valid file selected or file path could not be resolved.", null);
             return;
         }
-        if (detectedHeader == null) {
-            onError("File header could not be read or is invalid. Cannot decrypt.");
-            return;
-        }
-        String password = passwordInput.getText().toString();
-        if (password.isEmpty()) {
-            onError("Please enter a password.");
+        char[] password = passwordInput.getText().toString().toCharArray();
+        if (password.length == 0) {
+            onError("Password cannot be empty.", null);
             return;
         }
 
         try {
-            setUiEnabled(false);
-            onLog("Starting advanced decryption...");
+            int threads = threadCountSlider.getProgress() + 1;
+            int chunkSize = 1024 * 1024; // 1 MB, can be adjusted
 
-            // CryptoManager now handles all file IO via URI
-            cryptoManager.decryptAdvanced(password, selectedFileUri);
+            String destPath = currentFilePath.endsWith(".enc") ? currentFilePath.substring(0, currentFilePath.length() - 4) : currentFilePath + ".dec";
+
+            setUiEnabled(false);
+            onLog("Starting decryption with " + threads + " thread(s)...");
+
+            executor.submit(() -> {
+                try {
+                    cryptoManager.decrypt(currentFilePath, destPath, password, chunkSize, threads, this);
+                } catch (Exception e) {
+                    onError("Decryption failed", e);
+                }
+            });
 
         } catch (Exception e) {
-            onError("Failed to start decryption: " + e.getMessage());
-            setUiEnabled(true);
+            onError("Failed to start decryption", e);
         }
     }
 
@@ -180,66 +185,85 @@ public class AdvancedDecryptionActivity extends BaseActivity implements CryptoLi
             decryptButton.setEnabled(enabled);
             fileSelectButton.setEnabled(enabled);
             passwordInput.setEnabled(enabled);
-
-            if (enabled) {
-                progressBar.setVisibility(View.GONE);
-                 if(statusTextView != null) statusTextView.setVisibility(View.GONE);
-            } else {
-                lastProgress = -1;
-                progressBar.setVisibility(View.VISIBLE);
-                progressBar.setProgress(0);
-                if(statusTextView != null) statusTextView.setVisibility(View.GONE);
-            }
+            threadCountSlider.setEnabled(enabled);
+            progressBar.setVisibility(enabled ? View.INVISIBLE : View.VISIBLE);
         });
     }
 
-    private void launchFilePicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        filePickerLauncher.launch(intent);
+    private String getPathFromUri(Uri uri) {
+        File tempFile = null;
+        try {
+            String fileName = getFileName(uri);
+            tempFile = File.createTempFile("decrypt_temp", fileName, getCacheDir());
+            tempFile.deleteOnExit();
+            try (InputStream in = getContentResolver().openInputStream(uri); FileOutputStream out = new FileOutputStream(tempFile)) {
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, len);
+                }
+            }
+            return tempFile.getAbsolutePath();
+        } catch (Exception e) {
+            if (tempFile != null) tempFile.delete();
+            onError("Failed to process file URI. Please use a file stored locally.", e);
+            return null;
+        }
     }
 
     private String getFileName(Uri uri) {
-        String result = null;
-        if (uri != null && "content".equals(uri.getScheme())) {
-            try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+        String result = "tempfile";
+        if ("content".equals(uri.getScheme())) {
+            try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
                     int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                     if (nameIndex != -1) result = cursor.getString(nameIndex);
                 }
             }
         }
-        if (result == null && uri != null) {
-            result = uri.getPath();
-            if (result != null) {
-                int cut = result.lastIndexOf('/');
-                if (cut != -1) result = result.substring(cut + 1);
-            }
-        }
-        return result != null ? result : "Unknown";
+        return result;
     }
 
-    private void setupBottomNav() {
-        bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
-        bottomNav.setOnItemSelectedListener(item -> {
-            int itemId = item.getItemId();
-            if (itemId == R.id.nav_advanced_decrypt) {
-                // Already here
-            } else if (itemId == R.id.nav_advanced_encrypt) {
-                Intent intent = new Intent(this, AdvancedEncryptionActivity.class);
-                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-                startActivity(intent);
-                overridePendingTransition(0, 0);
-            }
-            return true;
+    // CryptoListener Implementation
+    @Override
+    public void onStart(long totalBytes) {
+        runOnUiThread(() -> {
+            progressBar.setProgress(0);
+            progressBar.setMax(100);
+            onLog("Processing " + totalBytes + " bytes...");
         });
     }
 
-    @Override public void onProgress(int progress) { runOnUiThread(() -> { if (progressBar != null) progressBar.setProgress(progress); }); lastProgress = progress; }
-    @Override public int getLastReportedProgress() { return lastProgress; }
-    @Override public void onSuccess(String message) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✓ SUCCESS"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.success_green)); } if (consoleTextView != null) consoleTextView.append("\n[SUCCESS] " + message + "\n"); scrollToBottom(); Toast.makeText(this, "Operation Successful", Toast.LENGTH_SHORT).show(); }); }
-    @Override public void onError(String errorMessage) { runOnUiThread(() -> { setUiEnabled(true); if(statusTextView != null) { statusTextView.setVisibility(View.VISIBLE); statusTextView.setText("✗ ERROR"); statusTextView.setTextColor(ContextCompat.getColor(this, R.color.failure_red)); } if(consoleTextView != null) consoleTextView.append("\n[ERROR] " + errorMessage + "\n"); scrollToBottom(); Toast.makeText(this, "Error occurred", Toast.LENGTH_SHORT).show(); }); }
-    @Override public void onLog(String logMessage) { runOnUiThread(() -> { if(consoleTextView != null) consoleTextView.append(logMessage + "\n"); scrollToBottom(); }); }
-    private void scrollToBottom() { if(consoleScrollView != null) { consoleScrollView.post(() -> consoleScrollView.fullScroll(ScrollView.FOCUS_DOWN)); } }
+    @Override
+    public void onProgress(long current, long total) {
+        int progress = (int) ((current * 100) / total);
+        runOnUiThread(() -> progressBar.setProgress(progress));
+    }
+
+    @Override
+    public void onSuccess(String message) {
+        runOnUiThread(() -> {
+            setUiEnabled(true);
+            onLog("[SUCCESS] " + message);
+            Toast.makeText(this, "Decryption Successful!", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    @Override
+    public void onError(String message, Exception e) {
+        runOnUiThread(() -> {
+            setUiEnabled(true);
+            String exceptionMessage = e != null ? e.getClass().getSimpleName() + ": " + e.getMessage() : "";
+            String logMsg = "[ERROR] " + message + "\n" + exceptionMessage;
+            onLog(logMsg);
+            Toast.makeText(this, "An Error Occurred", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void onLog(String message) {
+        runOnUiThread(() -> {
+            consoleTextView.append(message + "\n");
+            consoleScrollView.post(() -> consoleScrollView.fullScroll(View.FOCUS_DOWN));
+        });
+    }
 }

@@ -6,7 +6,6 @@
     android:layout_height="match_parent"
     tools:context=".AdvancedDecryptionActivity">
 
-    <!-- Declare the BottomNav first so its ID is available for views declared later -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
@@ -14,7 +13,6 @@
         android:layout_alignParentBottom="true"
         app:menu="@menu/advanced_bottom_nav_menu" />
 
-    <!-- The ScrollView is positioned above the BottomNav -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -28,10 +26,10 @@
 
             <!-- File Input -->
             <TextView
+                style="?android:attr/textAppearanceMedium"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="File and Password"
-                android:textAppearance="?android:attr/textAppearanceMedium"
                 android:textStyle="bold" />
 
             <Button
@@ -46,38 +44,173 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="No file selected" />
-                
+
             <EditText
                 android:id="@+id/password_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPassword"
-                android:hint="Password" />
+                android:hint="Password"
+                android:inputType="textPassword" />
 
-            <!-- Header Info Display (from original decryption layout) -->
+            <!-- Header Info Display -->
             <LinearLayout
                 android:id="@+id/header_info_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
                 android:layout_marginTop="16dp"
-                android:visibility="gone" 
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    style="?android:attr/textAppearanceMedium"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Encryption Parameters (from file)"
+                    android:textStyle="bold" />
+
+                <TextView android:id="@+id/info_protocol" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Protocol: AES" />
+                <TextView android:id="@+id/info_key_length" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Key Length: 256-bit" />
+                <TextView android:id="@+id/info_block_size" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Block Size: 128-bit" />
+                <TextView android:id="@+id/info_mode" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Mode: GCM" />
+                <TextView android:id="@+id/info_padding" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Padding: NoPadding" />
+                <TextView android:id="@+id/info_kdf" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="KDF: PBKDF2WithHmacSHA256" />
+            </LinearLayout>
+
+            <!-- Manual Mode Toggle -->
+            <CheckBox
+                android:id="@+id/manual_mode_checkbox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Manual Decryption Mode" />
+
+            <!-- Manual Cipher Settings (Initially hidden) -->
+            <LinearLayout
+                android:id="@+id/manual_options_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
                 tools:visibility="visible">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Encryption Parameters (from file)"
-                    android:textAppearance="?android:attr/textAppearanceMedium"
-                    android:textStyle="bold" />
-                
-                <TextView android:id="@+id/info_protocol" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Protocol: AES"/>
-                <TextView android:id="@+id/info_key_length" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Key Length: 256-bit"/>
-                <TextView android:id="@+id/info_mode" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Mode: GCM"/>
-                <TextView android:id="@+id/info_padding" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Padding: NoPadding"/>
-                <TextView android:id="@+id/info_kdf" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="KDF: PBKDF2WithHmacSHA256"/>
+                    android:text="Protocol"
+                    android:layout_marginTop="8dp"/>
+                <Spinner
+                    android:id="@+id/protocol_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Key Length"/>
+                <Spinner
+                    android:id="@+id/key_length_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:id="@+id/block_size_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Block Size (bits)"/>
+                <Spinner
+                    android:id="@+id/block_size_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Mode"/>
+                <Spinner
+                    android:id="@+id/mode_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Padding"/>
+                <Spinner
+                    android:id="@+id/padding_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Key Derivation Function (KDF)"/>
+                <Spinner
+                    android:id="@+id/kdf_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
 
             </LinearLayout>
+
+            <!-- Performance Settings -->
+            <TextView
+                style="?android:attr/textAppearanceMedium"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Performance"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Chunk Size: " />
+                <TextView
+                    android:id="@+id/chunk_size_value_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="4 KB" />
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/chunk_size_slider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="12"
+                android:progress="0" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Threads: " />
+                <TextView
+                    android:id="@+id/thread_count_value_textview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1" />
+            </LinearLayout>
+
+            <SeekBar
+                android:id="@+id/thread_count_slider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="15"
+                android:progress="0" />
 
             <!-- Actions -->
             <Button
@@ -87,13 +220,13 @@
                 android:layout_marginTop="16dp"
                 android:text="Decrypt" />
 
-            <!-- Status and Console (from encryption layout) -->
+            <!-- Status and Console -->
             <FrameLayout
                 android:id="@+id/status_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp">
-        
+
                 <ProgressBar
                     android:id="@+id/progress_bar"
                     style="?android:attr/progressBarStyleHorizontal"
@@ -123,8 +256,8 @@
                     android:id="@+id/console_textview"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:padding="8dp"
-                    android:fontFamily="monospace"/>
+                    android:fontFamily="monospace"
+                    android:padding="8dp" />
             </ScrollView>
 
         </LinearLayout>

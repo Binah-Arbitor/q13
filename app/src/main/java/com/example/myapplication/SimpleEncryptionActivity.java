@@ -1,6 +1,5 @@
 package com.example.myapplication;
 
-import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -35,7 +34,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
     private EditText passwordInput;
     private Button fileSelectButton, encryptButton;
-    private TextView selectedFileTextView, consoleTextView;
+    private TextView selectedFileTextView, consoleTextView, statusTextView;
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private Spinner modeSpinner;
@@ -56,6 +55,11 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         setupFilePicker();
         setupSpinner();
         setupEventListeners();
+        
+        findViewById(R.id.bottom_nav).setOnClickListener(v -> {
+            Intent intent = new Intent(this, AdvancedEncryptionActivity.class);
+            startActivity(intent);
+        });
     }
 
     private void initializeViews() {
@@ -66,7 +70,8 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         progressBar = findViewById(R.id.progress_bar);
         consoleTextView = findViewById(R.id.console_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
-        modeSpinner = findViewById(R.id.mode_spinner); // Assuming this ID exists in the layout
+        statusTextView = findViewById(R.id.status_textview);
+        modeSpinner = findViewById(R.id.mode_spinner); 
     }
 
     private void setupFilePicker() {
@@ -121,26 +126,26 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
 
         try {
-            CryptoOptions options = CryptoOptions.getDefault(); // Hardcoded to AES-256-GCM
+            CryptoOptions options = CryptoOptions.getDefault(); // AES-256-GCM
 
             int threads;
             if ("Performance".equals(selectedMode)) {
-                threads = Math.max(1, Runtime.getRuntime().availableProcessors() * 2 - 2);
+                options.setMode(CryptoOptions.CipherMode.CTR); // Must use CTR for parallelism
+                threads = Math.max(2, Runtime.getRuntime().availableProcessors());
             } else { // "Efficiency"
                 threads = 1;
             }
 
-            int chunkSize = 1024 * 1024; // 1 MB chunk size
+            int chunkSize = 1024 * 1024; // 1 MB
 
             String sourcePath = getPathFromUri(selectedFileUri);
-            if (sourcePath == null) {
-                onError("Could not get file path. Please select a locally stored file.", null);
-                return;
-            }
+            if (sourcePath == null) return; // Error handled in getPathFromUri
+            
             String destPath = sourcePath + ".enc";
 
+            resetUiState();
             setUiEnabled(false);
-            onLog("Starting encryption (AES-256-GCM, " + selectedMode + " Mode, " + threads + " threads)...");
+            onLog("Starting encryption (" + options.getMode() + ", " + selectedMode + " Mode, " + threads + " threads)...");
 
             executor.submit(() -> {
                 try {
@@ -161,17 +166,24 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             fileSelectButton.setEnabled(enabled);
             encryptButton.setEnabled(enabled);
             modeSpinner.setEnabled(enabled);
-            progressBar.setVisibility(enabled ? View.INVISIBLE : View.VISIBLE);
+            progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+            if(enabled) progressBar.setProgress(0);
+        });
+    }
+    
+    private void resetUiState() {
+        runOnUiThread(() -> {
+            consoleTextView.setText("");
+            statusTextView.setVisibility(View.GONE);
         });
     }
 
     private String getPathFromUri(Uri uri) {
-        File tempFile = null;
         try {
-            String fileName = getFileName(uri);
-            tempFile = File.createTempFile("temp_prefix", fileName, getCacheDir());
+            File tempFile = File.createTempFile("temp_simple_enc", ".tmp", getCacheDir());
             tempFile.deleteOnExit();
-            try (InputStream in = getContentResolver().openInputStream(uri); FileOutputStream out = new FileOutputStream(tempFile)) {
+            try (InputStream in = getContentResolver().openInputStream(uri); 
+                 FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
                 int len;
                 while ((len = in.read(buffer)) != -1) {
@@ -180,14 +192,13 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             }
             return tempFile.getAbsolutePath();
         } catch (Exception e) {
-            if (tempFile != null) tempFile.delete();
-            onError("Failed to process file URI", e);
+            onError("Failed to create a temporary file from URI", e);
             return null;
         }
     }
 
     private String getFileName(Uri uri) {
-        String result = "tempfile";
+        String result = "file.tmp";
         if ("content".equals(uri.getScheme())) {
             try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
@@ -200,25 +211,27 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     }
 
     // CryptoListener Implementation
+
     @Override
     public void onStart(long totalBytes) {
         runOnUiThread(() -> {
+            progressBar.setMax((int) totalBytes);
             progressBar.setProgress(0);
-            progressBar.setMax(100);
             onLog("Processing " + totalBytes + " bytes...");
         });
     }
 
     @Override
-    public void onProgress(long current, long total) {
-        int progress = (int) ((current * 100) / total);
-        runOnUiThread(() -> progressBar.setProgress(progress));
+    public void onProgress(long currentBytes, long totalBytes) {
+        runOnUiThread(() -> progressBar.setProgress((int) currentBytes));
     }
 
     @Override
     public void onSuccess(String message) {
         runOnUiThread(() -> {
             setUiEnabled(true);
+            statusTextView.setText("✓ SUCCESS");
+            statusTextView.setVisibility(View.VISIBLE);
             onLog("[SUCCESS] " + message);
             Toast.makeText(this, "Encryption Successful!", Toast.LENGTH_SHORT).show();
         });
@@ -228,14 +241,19 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     public void onError(String message, Exception e) {
         runOnUiThread(() -> {
             setUiEnabled(true);
-            String exceptionMessage = e != null ? e.getClass().getSimpleName() + ": " + e.getMessage() : "";
-            String logMsg = "[ERROR] " + message + "\n" + exceptionMessage;
+            statusTextView.setText("✗ ERROR");
+            statusTextView.setVisibility(View.VISIBLE);
+            String logMsg = "[ERROR] " + message + (e != null ? ": " + e.getMessage() : "");
             onLog(logMsg);
+            if (e != null) {
+                e.printStackTrace();
+            }
             Toast.makeText(this, "An Error Occurred", Toast.LENGTH_SHORT).show();
         });
     }
 
-    private void onLog(String message) {
+    @Override
+    public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");
             consoleScrollView.post(() -> consoleScrollView.fullScroll(View.FOCUS_DOWN));

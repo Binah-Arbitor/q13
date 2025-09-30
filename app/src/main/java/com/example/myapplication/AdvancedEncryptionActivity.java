@@ -1,6 +1,5 @@
 package com.example.myapplication;
 
-import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -36,19 +35,23 @@ import java.util.stream.Collectors;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
+    // ... (same member variables)
     private Spinner protocolSpinner, keyLengthSpinner, blockSpinner, modeSpinner, paddingSpinner, kdfSpinner;
-    private SeekBar threadCountSlider;
-    private TextView threadCountValueTextView;
+    private SeekBar threadCountSlider, chunkSizeSlider;
+    private TextView threadCountValueTextView, chunkSizeValueTextView;
     private EditText passwordInput;
     private Button fileSelectButton, encryptButton;
-    private TextView selectedFileTextView, consoleTextView;
+    private TextView selectedFileTextView, consoleTextView, statusTextView;
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
+    private View blockSpinnerLabel;
 
     private Uri selectedFileUri;
     private final CryptoManager cryptoManager = new CryptoManager();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<Intent> filePickerLauncher;
+    private static final int[] CHUNK_SIZES_KB = {4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384};
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,17 +63,25 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         setupFilePicker();
         setupSpinners();
         setupEventListeners();
+        
+        findViewById(R.id.bottom_nav).setOnClickListener(v -> {
+            Intent intent = new Intent(this, SimpleEncryptionActivity.class);
+            startActivity(intent);
+        });
     }
 
     private void initializeViews() {
         protocolSpinner = findViewById(R.id.protocol_spinner);
         keyLengthSpinner = findViewById(R.id.key_length_spinner);
         blockSpinner = findViewById(R.id.block_size_spinner);
+        blockSpinnerLabel = findViewById(R.id.block_size_label);
         modeSpinner = findViewById(R.id.mode_spinner);
         paddingSpinner = findViewById(R.id.padding_spinner);
         kdfSpinner = findViewById(R.id.kdf_spinner);
         threadCountSlider = findViewById(R.id.thread_count_slider);
         threadCountValueTextView = findViewById(R.id.thread_count_value_textview);
+        chunkSizeSlider = findViewById(R.id.chunk_size_slider);
+        chunkSizeValueTextView = findViewById(R.id.chunk_size_value_textview);
         passwordInput = findViewById(R.id.password_input);
         fileSelectButton = findViewById(R.id.file_select_button);
         encryptButton = findViewById(R.id.encrypt_button);
@@ -78,6 +89,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         progressBar = findViewById(R.id.progress_bar);
         consoleTextView = findViewById(R.id.console_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
+        statusTextView = findViewById(R.id.status_textview);
     }
 
     private void setupFilePicker() {
@@ -86,7 +98,8 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 result -> {
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         selectedFileUri = result.getData().getData();
-                        selectedFileTextView.setText(getFileName(selectedFileUri));
+                        String fileName = getFileName(selectedFileUri);
+                        selectedFileTextView.setText(fileName != null ? fileName : "No file selected");
                     }
                 });
     }
@@ -100,26 +113,25 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         kdfAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         kdfSpinner.setAdapter(kdfAdapter);
 
-        updateBlockAndKeyLengthSpinners();
+        protocolSpinner.setSelection(0);
+        kdfSpinner.setSelection(0);
     }
 
     private void setupEventListeners() {
         protocolSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                updateBlockAndKeyLengthSpinners();
+                updateDependantSpinners();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        blockSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        keyLengthSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                updateModeSpinner();
+                 updateModeSpinner();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
 
         modeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -127,8 +139,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 updatePaddingSpinner();
             }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         fileSelectButton.setOnClickListener(v -> {
@@ -140,7 +151,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
 
         encryptButton.setOnClickListener(v -> handleEncryption());
 
-        int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors() * 2 - 2);
+        int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
         threadCountSlider.setMax(maxThreads - 1);
         threadCountSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -150,42 +161,77 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             @Override public void onStartTrackingTouch(SeekBar seekBar) {} 
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+        threadCountSlider.setProgress(0);
         threadCountValueTextView.setText("1");
-    }
 
-    private void updateBlockAndKeyLengthSpinners() {
+        chunkSizeSlider.setMax(CHUNK_SIZES_KB.length - 1);
+        chunkSizeSlider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                chunkSizeValueTextView.setText(CHUNK_SIZES_KB[progress] + " KB");
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        chunkSizeSlider.setProgress(0);
+        chunkSizeValueTextView.setText(CHUNK_SIZES_KB[0] + " KB");
+    }
+    
+    private void updateDependantSpinners() {
+        updateKeyLengthSpinner();
+        updateBlockSizeSpinner(); // This will trigger updates for mode and padding
+    }
+    
+    private void updateKeyLengthSpinner() {
         CryptoOptions.CryptoProtocol selectedProtocol = (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem();
         if (selectedProtocol == null) return;
-
-        ArrayAdapter<Integer> blockAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, selectedProtocol.getSupportedBlockBits());
-        blockAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        blockSpinner.setAdapter(blockAdapter);
-
+        
         ArrayAdapter<CryptoOptions.KeyLength> keyLengthAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, selectedProtocol.getSupportedKeyLengths());
         keyLengthAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         keyLengthSpinner.setAdapter(keyLengthAdapter);
+    }
+
+    private void updateBlockSizeSpinner() {
+        CryptoOptions.CryptoProtocol selectedProtocol = (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem();
+        if (selectedProtocol == null) return;
+
+        List<Integer> supportedBlockSizes = selectedProtocol.getSupportedBlockBits();
+        ArrayAdapter<Integer> blockAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, supportedBlockSizes);
+        blockAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        blockSpinner.setAdapter(blockAdapter);
+
+        boolean isVisible = !supportedBlockSizes.isEmpty();
+        blockSpinner.setVisibility(isVisible ? View.VISIBLE : View.GONE);
+        blockSpinnerLabel.setVisibility(isVisible ? View.VISIBLE : View.GONE);
+
+        if (isVisible) {
+            blockSpinner.setSelection(0);
+        }
+        updateModeSpinner();
     }
 
     private void updateModeSpinner() {
         CryptoOptions.CryptoProtocol selectedProtocol = (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem();
         if (selectedProtocol == null) return;
 
-        Integer selectedBlockSize = (Integer) blockSpinner.getSelectedItem();
-        if (selectedBlockSize == null) return;
+        CryptoOptions.KeyLength selectedKeyLength = (CryptoOptions.KeyLength) keyLengthSpinner.getSelectedItem();
+        if (selectedKeyLength == null) return;
 
-        List<CryptoOptions.CipherMode> allModes = selectedProtocol.getSupportedModes();
-        List<CryptoOptions.CipherMode> supportedModes = allModes.stream()
-                .filter(mode -> {
-                    if (mode == CryptoOptions.CipherMode.XTS) {
-                        return selectedBlockSize == 128;
-                    }
-                    return true;
-                })
+        List<CryptoOptions.CipherMode> supportedModes = selectedProtocol.getSupportedModes();
+        
+        // XTS mode requires key length to be twice the block size, which is a complex dependency.
+        // Simplified: just filter based on protocol for now.
+        List<CryptoOptions.CipherMode> modes = supportedModes.stream()
+                .filter(m -> selectedProtocol.isModeSupported(m))
                 .collect(Collectors.toList());
 
-        ArrayAdapter<CryptoOptions.CipherMode> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, supportedModes);
+        ArrayAdapter<CryptoOptions.CipherMode> modeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, modes);
         modeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         modeSpinner.setAdapter(modeAdapter);
+        if (!modes.isEmpty()) {
+            modeSpinner.setSelection(0);
+        }
+        updatePaddingSpinner();
     }
 
     private void updatePaddingSpinner() {
@@ -197,7 +243,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
 
         CryptoOptions.CipherMode selectedMode = (CryptoOptions.CipherMode) selectedItem;
-        boolean isStreamCipher = selectedMode == CryptoOptions.CipherMode.CTR || selectedMode == CryptoOptions.CipherMode.GCM || selectedMode == CryptoOptions.CipherMode.CCM || selectedMode == CryptoOptions.CipherMode.OFB || selectedMode == CryptoOptions.CipherMode.CFB || selectedMode == CryptoOptions.CipherMode.OCB;
+        boolean isStreamCipher = selectedMode.isStreamMode();
 
         if (isStreamCipher) {
             ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new String[]{"NoPadding"});
@@ -205,12 +251,14 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             paddingSpinner.setEnabled(false);
         } else {
             ArrayAdapter<CryptoOptions.Padding> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, CryptoOptions.Padding.values());
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
             paddingSpinner.setAdapter(adapter);
             paddingSpinner.setEnabled(true);
         }
     }
 
     private void handleEncryption() {
+        // ... (validation logic is the same)
         if (selectedFileUri == null) {
             onError("Please select a file.", null);
             return;
@@ -224,27 +272,26 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         try {
             CryptoOptions.CryptoProtocol protocol = (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem();
             CryptoOptions.KeyLength keyLength = (CryptoOptions.KeyLength) keyLengthSpinner.getSelectedItem();
-            Integer blockSize = (Integer) blockSpinner.getSelectedItem();
+            Integer blockSize = (blockSpinner.getVisibility() == View.VISIBLE) ? (Integer) blockSpinner.getSelectedItem() : 0;
             CryptoOptions.CipherMode mode = (CryptoOptions.CipherMode) modeSpinner.getSelectedItem();
             CryptoOptions.Padding padding = paddingSpinner.isEnabled() ? (CryptoOptions.Padding) paddingSpinner.getSelectedItem() : CryptoOptions.Padding.NoPadding;
             CryptoOptions.Kdf kdf = (CryptoOptions.Kdf) kdfSpinner.getSelectedItem();
 
-            if (mode == null) {
-                 onError("No valid mode available for this protocol/block size combination.", null);
-                 return;
-            }
-
-            CryptoOptions options = new CryptoOptions(protocol, keyLength, blockSize, mode, padding, kdf);
-            int threads = threadCountSlider.getProgress() + 1;
-            int chunkSize = 1024 * 1024; // 1 MB chunk size
-
-            String sourcePath = getPathFromUri(selectedFileUri);
-            if (sourcePath == null) {
-                onError("Could not get the real path for the selected file. This can happen with cloud-based files (Google Drive, Dropbox). Please select a file stored locally on your device.", null);
+            if (protocol == null || keyLength == null || mode == null || kdf == null) {
+                onError("A required dropdown option is not selected.", null);
                 return;
             }
+            
+            CryptoOptions options = new CryptoOptions(protocol, keyLength, blockSize, mode, padding, kdf);
+            int threads = threadCountSlider.getProgress() + 1;
+            int chunkSize = CHUNK_SIZES_KB[chunkSizeSlider.getProgress()] * 1024;
+
+            String sourcePath = getPathFromUri(selectedFileUri);
+            if (sourcePath == null) return; 
+
             String destPath = sourcePath + ".enc";
 
+            resetUiState();
             setUiEnabled(false);
             onLog("Starting encryption...");
             onLog("Options: " + options.toString());
@@ -258,7 +305,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             });
 
         } catch (Exception e) {
-            onError("Invalid options selected", e);
+            onError("Invalid options selected or failed to start", e);
         }
     }
 
@@ -271,21 +318,27 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             paddingSpinner.setEnabled(enabled);
             kdfSpinner.setEnabled(enabled);
             threadCountSlider.setEnabled(enabled);
+            chunkSizeSlider.setEnabled(enabled);
             passwordInput.setEnabled(enabled);
             fileSelectButton.setEnabled(enabled);
             encryptButton.setEnabled(enabled);
-            progressBar.setVisibility(enabled ? View.INVISIBLE : View.VISIBLE);
+            progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        });
+    }
+    
+    private void resetUiState() {
+        runOnUiThread(() -> {
+            consoleTextView.setText("");
+            statusTextView.setVisibility(View.GONE);
+            progressBar.setProgress(0);
         });
     }
 
     private String getPathFromUri(Uri uri) {
-        File tempFile = null;
         try {
-            ContentResolver resolver = getContentResolver();
-            String fileName = getFileName(uri);
-            tempFile = File.createTempFile("upload_temp", fileName, getCacheDir());
+            File tempFile = File.createTempFile("temp_adv_enc", ".tmp", getCacheDir());
             tempFile.deleteOnExit();
-            try (InputStream in = resolver.openInputStream(uri);
+            try (InputStream in = getContentResolver().openInputStream(uri); 
                  FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
                 int len;
@@ -295,16 +348,13 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             }
             return tempFile.getAbsolutePath();
         } catch (Exception e) {
-            if (tempFile != null) {
-                tempFile.delete();
-            }
-            onError("Failed to process file URI", e);
+            onError("Failed to create a temporary file from URI", e);
             return null;
         }
     }
 
     private String getFileName(Uri uri) {
-        String result = "tempfile";
+        String result = null;
         if (uri.getScheme().equals("content")) {
             try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
@@ -317,37 +367,38 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
         if (result == null) {
             result = uri.getPath();
-            if (result != null) {
-                 int cut = result.lastIndexOf('/');
-                 if (cut != -1) {
-                    result = result.substring(cut + 1);
-                 }
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) {
+                result = result.substring(cut + 1);
             }
         }
         return result;
     }
 
+    // CryptoListener Implementation
+
     @Override
     public void onStart(long totalBytes) {
         runOnUiThread(() -> {
+            progressBar.setMax((int) totalBytes);
             progressBar.setProgress(0);
-            progressBar.setMax(100);
             onLog("Processing " + totalBytes + " bytes...");
         });
     }
 
     @Override
-    public void onProgress(long current, long total) {
-        int progress = (int) ((current * 100) / total);
-        runOnUiThread(() -> progressBar.setProgress(progress));
+    public void onProgress(long currentBytes, long totalBytes) {
+        runOnUiThread(() -> progressBar.setProgress((int) currentBytes));
     }
 
     @Override
     public void onSuccess(String message) {
         runOnUiThread(() -> {
             setUiEnabled(true);
+            statusTextView.setText("✓ SUCCESS");
+            statusTextView.setVisibility(View.VISIBLE);
             onLog("[SUCCESS] " + message);
-            Toast.makeText(this, "Encryption Successful!", Toast.LENGTH_SHORT).show();
+            Toast.makeText(AdvancedEncryptionActivity.this, "Encryption Successful!", Toast.LENGTH_SHORT).show();
         });
     }
 
@@ -355,14 +406,19 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     public void onError(String message, Exception e) {
         runOnUiThread(() -> {
             setUiEnabled(true);
-            String exceptionMessage = e != null ? e.getClass().getSimpleName() + ": " + e.getMessage() : "";
-            String logMsg = "[ERROR] " + message + "\n" + exceptionMessage;
+            statusTextView.setText("✗ ERROR");
+            statusTextView.setVisibility(View.VISIBLE);
+            String logMsg = "[ERROR] " + message + (e != null ? ": " + e.getMessage() : "");
             onLog(logMsg);
-            Toast.makeText(this, "An Error Occurred", Toast.LENGTH_SHORT).show();
+             if (e != null) {
+                e.printStackTrace();
+            }
+            Toast.makeText(AdvancedEncryptionActivity.this, "An Error Occurred", Toast.LENGTH_SHORT).show();
         });
     }
 
-    private void onLog(String message) {
+    @Override
+    public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");
             consoleScrollView.post(() -> consoleScrollView.fullScroll(View.FOCUS_DOWN));

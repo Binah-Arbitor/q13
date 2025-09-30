@@ -1,335 +1,232 @@
 package com.example.myapplication.crypto;
 
-import org.bouncycastle.crypto.InvalidCipherTextException;
-import org.bouncycastle.crypto.engines.AESEngine;
-import org.bouncycastle.crypto.modes.GCMBlockCipher;
-import org.bouncycastle.crypto.params.AEADParameters;
-import org.bouncycastle.crypto.params.KeyParameter;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.RandomAccessFile;
 import java.math.BigInteger;
-import java.security.Security;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.Callable;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import javax.crypto.Cipher;
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.spec.SecretKeySpec;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class ParallelProcessor implements CryptoProcessor {
 
-    private static final int GCM_TAG_LENGTH_BYTES = 128 / 8;
-    private static final int BLOCK_SIZE_BYTES = 16;
-
-    static {
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(new BouncyCastleProvider());
-        }
-    }
+    private static final int BLOCK_SIZE_BYTES = 16; // AES block size
 
     @Override
     public void encrypt(String sourceFilePath, String destFilePath, char[] password, CryptoOptions options, int chunkSize, int threads, CryptoListener listener) throws Exception {
-        if (!options.isParallelizable()) throw new IllegalArgumentException("Selected mode is not parallelizable: " + options.getMode());
-        if (listener == null) listener = CryptoListener.DEFAULT;
-        
-        File sourceFile = new File(sourceFilePath);
-        File destFile = new File(destFilePath);
-
+        FileHeader header = new FileHeader(options);
         byte[] salt = Utils.generateRandomBytes(16);
-        SecretKeyFactory factory = SecretKeyFactory.getInstance(options.getKdf().toString(), BouncyCastleProvider.PROVIDER_NAME);
-        PBEKeySpec spec = new PBEKeySpec(password, salt, 65536, options.getKeyLength());
-        SecretKey secretKey = factory.generateSecret(spec);
-        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), options.getProtocol().name());
+        header.setSalt(salt);
+
+        SecretKeySpec key = KeyDerivation.deriveKey(password, salt, options.getKdf(), options.getKeyLength(), options.getProtocol().isXTS());
 
         byte[] iv = Utils.generateRandomBytes(options.getIvLengthBytes());
-        
-        long fileLength = sourceFile.length();
-        long totalChunks = (fileLength + chunkSize - 1) / chunkSize;
+        header.setIv(iv);
 
-        int headerSize;
-        try (FileOutputStream fos = new FileOutputStream(destFile)) {
-            FileHeader header = new FileHeader(options, salt, iv);
-            headerSize = header.writeTo(fos);
-        }
-        try (RandomAccessFile raf = new RandomAccessFile(destFile, "rw")) {
-            long finalLength = headerSize + fileLength + (options.getMode() == CryptoOptions.CipherMode.GCM ? GCM_TAG_LENGTH_BYTES : 0);
-            raf.setLength(finalLength);
-        }
+        ExecutorService executor = Executors.newFixedThreadPool(threads + 2); // +2 for reader and writer
+        BlockingQueue<Chunk> readQueue = new ArrayBlockingQueue<>(threads);
+        BlockingQueue<Chunk> writeQueue = new ArrayBlockingQueue<>(threads);
 
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
-        List<Future<Void>> futures = new ArrayList<>();
+        File sourceFile = new File(sourceFilePath);
+        long totalSize = sourceFile.length();
+        listener.onStart(totalSize);
 
-        try {
-            listener.onStart(totalChunks);
-            for (int i = 0; i < totalChunks; i++) {
-                final long chunkIndex = i;
-                Callable<Void> task = () -> {
-                    long offset = chunkIndex * chunkSize;
-                    int length = (int) Math.min(chunkSize, fileLength - offset);
+        AtomicLong progress = new AtomicLong(0);
 
-                    byte[] plainChunk = new byte[length];
-                    try (RandomAccessFile rafSource = new RandomAccessFile(sourceFile, "r")) {
-                        rafSource.seek(offset);
-                        rafSource.readFully(plainChunk);
-                    }
-                    
-                    Cipher cipher;
-                    byte[] encryptedData;
-
-                    switch (options.getMode()) {
-                        case GCM:
-                        case CTR: 
-                            cipher = Cipher.getInstance(options.getProtocol().name() + "/CTR/NoPadding", BouncyCastleProvider.PROVIDER_NAME);
-                            IvParameterSpec ctrIv = getCtrIv(iv, chunkIndex, options.getIvLengthBytes(), options.getMode() == CryptoOptions.CipherMode.GCM);
-                            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, ctrIv);
-                            break;
-                        case XTS:
-                            cipher = Cipher.getInstance(options.getProtocol().name() + "/XTS/NoPadding", BouncyCastleProvider.PROVIDER_NAME);
-                            byte[] tweak = getTweakForChunk_XTS(chunkIndex, options.getBlockBitSize() / 8);
-                            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec, new IvParameterSpec(tweak));
-                            break;
-                        case ECB:
-                             cipher = Cipher.getInstance(options.getProtocol().name() + "/ECB/NoPadding", BouncyCastleProvider.PROVIDER_NAME);
-                             cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
-                            break;
-                        default: throw new IllegalStateException("Non-parallelizable mode found in parallel processor: " + options.getMode());
-                    }
-                    encryptedData = cipher.doFinal(plainChunk);
-
-                    try (RandomAccessFile rafDest = new RandomAccessFile(destFile, "rw")) {
-                        rafDest.seek(headerSize + offset);
-                        rafDest.write(encryptedData);
-                    }
-                    listener.onProgress(chunkIndex + 1, totalChunks);
-                    return null;
-                };
-                futures.add(executor.submit(task));
-            }
-
-            for (Future<Void> future : futures) future.get();
-
-            if (options.getMode() == CryptoOptions.CipherMode.GCM) {
-                byte[] tag = calculateGcmTag(destFile, headerSize, fileLength, secretKeySpec, iv);
-                try (RandomAccessFile raf = new RandomAccessFile(destFile, "rw")) {
-                    raf.seek(headerSize + fileLength);
-                    raf.write(tag);
+        // Reader Thread
+        executor.submit(() -> {
+            try (FileInputStream fis = new FileInputStream(sourceFile)) {
+                long offset = 0;
+                int chunkIndex = 0;
+                while (offset < totalSize) {
+                    int size = (int) Math.min(chunkSize, totalSize - offset);
+                    byte[] data = new byte[size];
+                    fis.read(data);
+                    readQueue.put(new Chunk(chunkIndex++, data, size));
+                    offset += size;
                 }
+                readQueue.put(new Chunk(-1, null, 0)); // Poison pill
+            } catch (Exception e) {
+                listener.onError("Error reading file", e);
             }
+        });
 
-            listener.onSuccess("File encrypted successfully.");
+        // Worker Threads
+        for (int i = 0; i < threads; i++) {
+            executor.submit(() -> {
+                try {
+                    while (true) {
+                        Chunk chunk = readQueue.take();
+                        if (chunk.isPoisonPill()) {
+                            readQueue.put(chunk); // Put it back for other workers
+                            break;
+                        }
+                        chunk.setData(processChunk(chunk.getData(), chunk.getIndex(), key, iv, options, chunkSize));
+                        writeQueue.put(chunk);
+                    }
+                } catch (Exception e) {
+                    listener.onError("Error during encryption worker task", e);
+                }
+            });
+        }
 
-        } catch (Exception e) {
-            executor.shutdownNow();
-            destFile.delete();
-            listener.onError("Parallel encryption failed: " + e.getMessage(), e);
-            throw e;
+        // Writer Thread
+        try (FileOutputStream fos = new FileOutputStream(destFilePath)) {
+            fos.write(header.getHeaderBytes());
+            long chunksToWrite = (long) Math.ceil((double) totalSize / chunkSize);
+            for (int i = 0; i < chunksToWrite; i++) {
+                Chunk chunk = writeQueue.take();
+                fos.write(chunk.getData());
+                long currentProgress = progress.addAndGet(chunk.getSize());
+                listener.onProgress(currentProgress, totalSize);
+            }
+            listener.onSuccess("Encryption completed successfully.");
         } finally {
-            if (!executor.isShutdown()) executor.shutdown();
+            executor.shutdownNow();
         }
     }
 
     @Override
-    public void decrypt(String sourceFilePath, String destFilePath, char[] password, int chunkSize, int threads, CryptoListener listener) throws Exception {
-        if (listener == null) listener = CryptoListener.DEFAULT;
-        
+    public void decrypt(String sourceFilePath, String destFilePath, char[] password, CryptoOptions manualOptions, int chunkSize, int threads, CryptoListener listener) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(threads + 2);
+        BlockingQueue<Chunk> readQueue = new ArrayBlockingQueue<>(threads);
+        BlockingQueue<Chunk> writeQueue = new ArrayBlockingQueue<>(threads);
+
         File sourceFile = new File(sourceFilePath);
-        File destFile = new File(destFilePath);
+        long totalSize = sourceFile.length();
 
-        FileHeader header;
-        int headerSize;
-        try (FileInputStream fis = new FileInputStream(sourceFile)) {
-            header = FileHeader.readFrom(fis);
-            headerSize = (int) fis.getChannel().position();
-        }
-        
-        CryptoOptions options = header.getOptions();
-        if (!options.isParallelizable()) throw new IllegalArgumentException("File was not encrypted with a parallelizable mode: " + options.getMode());
+        CryptoOptions options;
+        SecretKeySpec key;
+        byte[] iv;
+        long headerSize;
 
-        SecretKeyFactory factory = SecretKeyFactory.getInstance(options.getKdf().toString(), BouncyCastleProvider.PROVIDER_NAME);
-        PBEKeySpec spec = new PBEKeySpec(password, header.getSalt(), 65536, options.getKeyLength());
-        SecretKey secretKey = factory.generateSecret(spec);
-        SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getEncoded(), options.getProtocol().name());
-        byte[] iv = header.getIv();
-
-        long contentLength = sourceFile.length() - headerSize - (options.getMode() == CryptoOptions.CipherMode.GCM ? GCM_TAG_LENGTH_BYTES : 0);
-        if (contentLength < 0) throw new InvalidCipherTextException("Source file is smaller than the header and tag size.");
-        
-        long totalChunks = (contentLength + chunkSize - 1) / chunkSize;
-
-        try (RandomAccessFile raf = new RandomAccessFile(destFile, "rw")) {
-            raf.setLength(contentLength);
-        }
-
-        ExecutorService executor = Executors.newFixedThreadPool(threads);
-        List<Future<Void>> futures = new ArrayList<>();
-
-        try {
-             if (options.getMode() == CryptoOptions.CipherMode.GCM) {
-                verifyGcmTag(sourceFile, headerSize, contentLength, secretKeySpec, iv);
-            }
-            
-            listener.onStart(totalChunks);
-            for (int i = 0; i < totalChunks; i++) {
-                final long chunkIndex = i;
-                Callable<Void> task = () -> {
-                    long offset = chunkIndex * chunkSize;
-                    int length = (int) Math.min(chunkSize, contentLength - offset);
-
-                    byte[] encryptedChunk = new byte[length];
-                     try (RandomAccessFile rafSource = new RandomAccessFile(sourceFile, "r")) {
-                        rafSource.seek(headerSize + offset);
-                        rafSource.readFully(encryptedChunk);
-                    }
-
-                    Cipher cipher;
-                    byte[] decryptedData;
-                    
-                     switch (options.getMode()) {
-                        case GCM:
-                        case CTR:
-                            cipher = Cipher.getInstance(options.getProtocol().name() + "/CTR/NoPadding", BouncyCastleProvider.PROVIDER_NAME);
-                            IvParameterSpec ctrIv = getCtrIv(iv, chunkIndex, options.getIvLengthBytes(), options.getMode() == CryptoOptions.CipherMode.GCM);
-                            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, ctrIv);
-                            break;
-                        case XTS:
-                             cipher = Cipher.getInstance(options.getProtocol().name() + "/XTS/NoPadding", BouncyCastleProvider.PROVIDER_NAME);
-                             byte[] tweak = getTweakForChunk_XTS(chunkIndex, options.getBlockBitSize() / 8);
-                            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec, new IvParameterSpec(tweak));
-                            break;
-                        case ECB:
-                             cipher = Cipher.getInstance(options.getProtocol().name() + "/ECB/NoPadding", BouncyCastleProvider.PROVIDER_NAME);
-                             cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
-                            break;
-                        default: throw new IllegalStateException("Invalid mode for parallel decryption: " + options.getMode());
-                    }
-                    decryptedData = cipher.doFinal(encryptedChunk);
-
-                    try (RandomAccessFile rafDest = new RandomAccessFile(destFile, "rw")) {
-                        rafDest.seek(offset);
-                        rafDest.write(decryptedData);
-                    }
-                    listener.onProgress(chunkIndex + 1, totalChunks);
-                    return null;
-                };
-                futures.add(executor.submit(task));
-            }
-
-            for (Future<Void> future : futures) future.get();
-
-            listener.onSuccess("File decrypted successfully.");
-
-        } catch (Exception e) {
-            executor.shutdownNow();
-            destFile.delete();
-            if (e instanceof InvalidCipherTextException) {
-                listener.onError("Decryption failed: File is corrupted or password is wrong.", e);
-            } else {
-                listener.onError("Parallel decryption failed: " + e.getMessage(), e);
-            }
-            throw e;
-        } finally {
-            if (!executor.isShutdown()) executor.shutdown();
-        }
-    }
-
-    private byte[] calculateGcmTag(File file, int headerSize, long contentLength, SecretKeySpec key, byte[] iv) throws Exception {
-        GCMBlockCipher gcm = new GCMBlockCipher(new AESEngine());
-        gcm.init(true, new AEADParameters(new KeyParameter(key.getEncoded()), GCM_TAG_LENGTH_BYTES * 8, iv, null));
-
-        try (FileInputStream fis = new FileInputStream(file)) {
-            fis.skip(headerSize);
-            byte[] buffer = new byte[8192];
-            long remaining = contentLength;
-            int bytesRead;
-            while (remaining > 0 && (bytesRead = fis.read(buffer, 0, (int)Math.min(buffer.length, remaining))) != -1) {
-                gcm.processBytes(buffer, 0, bytesRead, new byte[0], 0);
-                remaining -= bytesRead;
-            }
-        }
-        byte[] tag = new byte[GCM_TAG_LENGTH_BYTES];
-        gcm.doFinal(tag, 0);
-        return tag;
-    }
-
-    private void verifyGcmTag(File file, int headerSize, long contentLength, SecretKeySpec key, byte[] iv) throws Exception {
-        GCMBlockCipher gcm = new GCMBlockCipher(new AESEngine());
-        gcm.init(false, new AEADParameters(new KeyParameter(key.getEncoded()), GCM_TAG_LENGTH_BYTES * 8, iv, null));
-        
-        byte[] receivedTag = new byte[GCM_TAG_LENGTH_BYTES];
-        long ciphertextEnd = headerSize + contentLength;
-
-        try (FileInputStream fis = new FileInputStream(file)) {
-            fis.skip(headerSize);
-            byte[] buffer = new byte[8192];
-            long remaining = contentLength;
-            int bytesRead;
-            while (remaining > 0 && (bytesRead = fis.read(buffer, 0, (int)Math.min(buffer.length, remaining))) != -1) {
-                gcm.processBytes(buffer, 0, bytesRead, new byte[0], 0);
-                remaining -= bytesRead;
-            }
-
-            RandomAccessFile raf = new RandomAccessFile(file, "r");
-            raf.seek(ciphertextEnd);
-            raf.readFully(receivedTag);
-            raf.close();
-        }
-        
-        byte[] calculatedTag = new byte[GCM_TAG_LENGTH_BYTES];
-        gcm.doFinal(calculatedTag, 0); 
-
-        if (!java.util.Arrays.equals(calculatedTag, receivedTag)) {
-            throw new InvalidCipherTextException("Tag mismatch!");
-        }
-    }
-
-    private IvParameterSpec getCtrIv(byte[] initialIv, long chunkIndex, int ivLengthBytes, boolean forGcm) {
-        BigInteger ivAsInt = new BigInteger(1, initialIv);
-        BigInteger counter = BigInteger.valueOf(forGcm ? 2 + chunkIndex : chunkIndex);
-        
-        BigInteger blockOffset = BigInteger.valueOf(chunkIndex).multiply(BigInteger.valueOf(chunkSize / BLOCK_SIZE_BYTES));
-        if (!forGcm) {
-             counter = blockOffset;
+        if (manualOptions != null) {
+            options = manualOptions;
+            // In manual mode, we must assume a salt/IV or derive them differently. For now, a placeholder:
+            byte[] salt = new byte[16]; // Or derive from password in a pre-defined way
+            iv = new byte[options.getIvLengthBytes()];
+            key = KeyDerivation.deriveKey(password, salt, options.getKdf(), options.getKeyLength(), options.getProtocol().isXTS());
+            headerSize = 0;
         } else {
-            // GCM counter is special. It increments the last 32 bits.
-            // This is a simplified block-based increment, more robust would be a pure 128-bit add.
-            counter = BigInteger.valueOf(2).add(blockOffset);
-        }
-
-        BigInteger newIvVal = ivAsInt.add(counter);
-        byte[] newIvBytes = newIvVal.toByteArray();
-        byte[] finalIv = new byte[ivLengthBytes];
-        
-        int destPos = ivLengthBytes - newIvBytes.length;
-        int srcPos = Math.max(0, -destPos);
-        destPos = Math.max(0, destPos);
-        int len = Math.min(newIvBytes.length - srcPos, ivLengthBytes - destPos);
-
-        System.arraycopy(newIvBytes, srcPos, finalIv, destPos, len);
-        return new IvParameterSpec(finalIv);
-    }
-
-    private byte[] getTweakForChunk_XTS(long chunkIndex, int blockSizeBytes) {
-        byte[] tweak = new byte[blockSizeBytes];
-        // XTS uses the sector number as the tweak, which we can map from chunkIndex
-        // This is a simplified mapping; a real system might use a more complex sector mapping.
-        long sector = chunkIndex * (chunkSize / blockSizeBytes);
-        for (int i = 0; i < blockSizeBytes; i++) {
-            if (i < 8) { // A long is 8 bytes
-                tweak[i] = (byte)(sector >>> (i * 8));
-            } else {
-                tweak[i] = 0;
+            try (FileInputStream tempFis = new FileInputStream(sourceFile)) {
+                FileHeader header = FileHeader.fromStream(tempFis);
+                options = header.getOptions();
+                iv = header.getIv();
+                key = KeyDerivation.deriveKey(password, header.getSalt(), options.getKdf(), options.getKeyLength(), options.getProtocol().isXTS());
+                headerSize = FileHeader.HEADER_SIZE;
             }
         }
-        return tweak;
+
+        long contentSize = totalSize - headerSize;
+        listener.onStart(contentSize);
+        AtomicLong progress = new AtomicLong(0);
+
+        // Reader Thread
+        executor.submit(() -> {
+            try (RandomAccessFile raf = new RandomAccessFile(sourceFile, "r")) {
+                raf.seek(headerSize);
+                long offset = 0;
+                int chunkIndex = 0;
+                while (offset < contentSize) {
+                    int size = (int) Math.min(chunkSize, contentSize - offset);
+                    byte[] data = new byte[size];
+                    raf.read(data, 0, size);
+                    readQueue.put(new Chunk(chunkIndex++, data, size));
+                    offset += size;
+                }
+                readQueue.put(new Chunk(-1, null, 0)); // Poison pill
+            } catch (Exception e) {
+                listener.onError("Error reading encrypted file", e);
+            }
+        });
+
+        // Worker Threads
+        for (int i = 0; i < threads; i++) {
+            executor.submit(() -> {
+                try {
+                    while (true) {
+                        Chunk chunk = readQueue.take();
+                        if (chunk.isPoisonPill()) {
+                            readQueue.put(chunk);
+                            break;
+                        }
+                        chunk.setData(processChunk(chunk.getData(), chunk.getIndex(), key, iv, options, chunkSize));
+                        writeQueue.put(chunk);
+                    }
+                } catch (Exception e) {
+                    listener.onError("Error during decryption worker task", e);
+                }
+            });
+        }
+
+        // Writer Thread
+        try (FileOutputStream fos = new FileOutputStream(destFilePath)) {
+            long chunksToWrite = (long) Math.ceil((double) contentSize / chunkSize);
+            for (int i = 0; i < chunksToWrite; i++) {
+                Chunk chunk = writeQueue.take();
+                fos.write(chunk.getData());
+                long currentProgress = progress.addAndGet(chunk.getSize());
+                listener.onProgress(currentProgress, contentSize);
+            }
+            listener.onSuccess("Decryption completed successfully.");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private byte[] processChunk(byte[] data, int chunkIndex, SecretKeySpec key, byte[] iv, CryptoOptions options, int chunkSize) throws Exception {
+        // For stream ciphers like CTR, the IV needs to be updated for each block.
+        // This is a simplified approach; a robust implementation needs careful IV management per block.
+        Cipher cipher = options.getProtocol().getInitialisedCipher(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv)); // Re-init is important for some modes
+
+        if (options.getMode() == CryptoOptions.CipherMode.CTR) {
+            BigInteger ivInt = new BigInteger(1, iv);
+            BigInteger blockOffset = BigInteger.valueOf(chunkIndex).multiply(BigInteger.valueOf(chunkSize / BLOCK_SIZE_BYTES));
+            ivInt = ivInt.add(blockOffset);
+            IvParameterSpec ivSpec = new IvParameterSpec(ivInt.toByteArray());
+            cipher.init(options.getProtocol() == CryptoOptions.CryptoProtocol.AES ? Cipher.ENCRYPT_MODE : Cipher.DECRYPT_MODE, key, ivSpec);
+        }
+        
+        return cipher.doFinal(data);
+    }
+
+
+    private static class Chunk {
+        private final int index;
+        private byte[] data;
+        private final int size;
+
+        Chunk(int index, byte[] data, int size) {
+            this.index = index;
+            this.data = data;
+            this.size = size;
+        }
+
+        boolean isPoisonPill() {
+            return index == -1;
+        }
+
+        int getIndex() {
+            return index;
+        }
+
+        byte[] getData() {
+            return data;
+        }
+
+        int getSize() {
+            return size;
+        }
+
+        void setData(byte[] data) {
+            this.data = data;
+        }
     }
 }

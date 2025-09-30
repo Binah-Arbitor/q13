@@ -1,6 +1,5 @@
 package com.example.myapplication;
 
-import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -34,7 +33,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
     private EditText passwordInput;
     private Button fileSelectButton, decryptButton;
-    private TextView selectedFileTextView, consoleTextView;
+    private TextView selectedFileTextView, consoleTextView, statusTextView;
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private Spinner modeSpinner;
@@ -55,6 +54,11 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         setupFilePicker();
         setupSpinner();
         setupEventListeners();
+        
+        findViewById(R.id.bottom_nav).setOnClickListener(v -> {
+            Intent intent = new Intent(this, AdvancedDecryptionActivity.class);
+            startActivity(intent);
+        });
     }
 
     private void initializeViews() {
@@ -65,6 +69,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         progressBar = findViewById(R.id.progress_bar);
         consoleTextView = findViewById(R.id.console_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
+        statusTextView = findViewById(R.id.status_textview);
         modeSpinner = findViewById(R.id.mode_spinner);
     }
 
@@ -94,7 +99,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
                 selectedMode = modes[0];
             }
         });
-        selectedMode = modes[0]; // Default selection
+        selectedMode = modes[0]; // Default
     }
 
     private void setupEventListeners() {
@@ -120,27 +125,24 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         }
 
         try {
-            int threads;
-            if ("Performance".equals(selectedMode)) {
-                threads = Math.max(1, Runtime.getRuntime().availableProcessors() * 2 - 2);
-            } else { // "Efficiency"
-                threads = 1;
-            }
+            int threads = "Performance".equals(selectedMode) ? Math.max(2, Runtime.getRuntime().availableProcessors()) : 1;
             int chunkSize = 1024 * 1024; // 1 MB
 
             String sourcePath = getPathFromUri(selectedFileUri);
-            if (sourcePath == null) {
-                onError("Could not get file path. Please select a locally stored file.", null);
-                return;
-            }
-            String destPath = sourcePath.endsWith(".enc") ? sourcePath.substring(0, sourcePath.length() - 4) : sourcePath + ".dec";
+            if (sourcePath == null) return; 
+            
+            String originalFileName = getFileName(selectedFileUri).replaceAll("\\.enc$", "");
+            File destFile = new File(getCacheDir(), "dec_" + originalFileName);
+            String destPath = destFile.getAbsolutePath();
 
+            resetUiState();
             setUiEnabled(false);
             onLog("Starting decryption (" + selectedMode + " Mode, " + threads + " threads)...");
 
             executor.submit(() -> {
                 try {
-                    cryptoManager.decrypt(sourcePath, destPath, password, chunkSize, threads, this);
+                    // Always use null for manualOptions in simple mode
+                    cryptoManager.decrypt(sourcePath, destPath, password, null, chunkSize, threads, this);
                 } catch (Exception e) {
                     onError("Decryption failed", e);
                 }
@@ -157,17 +159,24 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             fileSelectButton.setEnabled(enabled);
             decryptButton.setEnabled(enabled);
             modeSpinner.setEnabled(enabled);
-            progressBar.setVisibility(enabled ? View.INVISIBLE : View.VISIBLE);
+            progressBar.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        });
+    }
+
+    private void resetUiState() {
+        runOnUiThread(() -> {
+            consoleTextView.setText("");
+            statusTextView.setVisibility(View.GONE);
+            progressBar.setProgress(0);
         });
     }
 
     private String getPathFromUri(Uri uri) {
-        File tempFile = null;
-        try {
-            String fileName = getFileName(uri);
-            tempFile = File.createTempFile("decrypt_temp", fileName, getCacheDir());
+       try {
+            File tempFile = File.createTempFile("temp_simple_dec", ".tmp", getCacheDir());
             tempFile.deleteOnExit();
-            try (InputStream in = getContentResolver().openInputStream(uri); FileOutputStream out = new FileOutputStream(tempFile)) {
+            try (InputStream in = getContentResolver().openInputStream(uri); 
+                 FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
                 int len;
                 while ((len = in.read(buffer)) != -1) {
@@ -176,14 +185,13 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
             }
             return tempFile.getAbsolutePath();
         } catch (Exception e) {
-            if (tempFile != null) tempFile.delete();
-            onError("Failed to process file URI", e);
+            onError("Failed to create a temporary file from URI", e);
             return null;
         }
     }
 
     private String getFileName(Uri uri) {
-        String result = "tempfile";
+        String result = "file.tmp";
         if ("content".equals(uri.getScheme())) {
             try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
@@ -196,25 +204,27 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     }
 
     // CryptoListener Implementation
+
     @Override
     public void onStart(long totalBytes) {
         runOnUiThread(() -> {
+            progressBar.setMax((int) totalBytes);
             progressBar.setProgress(0);
-            progressBar.setMax(100);
             onLog("Processing " + totalBytes + " bytes...");
         });
     }
 
     @Override
-    public void onProgress(long current, long total) {
-        int progress = (int) ((current * 100) / total);
-        runOnUiThread(() -> progressBar.setProgress(progress));
+    public void onProgress(long currentBytes, long totalBytes) {
+        runOnUiThread(() -> progressBar.setProgress((int) currentBytes));
     }
 
     @Override
     public void onSuccess(String message) {
         runOnUiThread(() -> {
             setUiEnabled(true);
+            statusTextView.setText("✓ SUCCESS");
+            statusTextView.setVisibility(View.VISIBLE);
             onLog("[SUCCESS] " + message);
             Toast.makeText(this, "Decryption Successful!", Toast.LENGTH_SHORT).show();
         });
@@ -224,14 +234,19 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     public void onError(String message, Exception e) {
         runOnUiThread(() -> {
             setUiEnabled(true);
-            String exceptionMessage = e != null ? e.getClass().getSimpleName() + ": " + e.getMessage() : "";
-            String logMsg = "[ERROR] " + message + "\n" + exceptionMessage;
+            statusTextView.setText("✗ ERROR");
+            statusTextView.setVisibility(View.VISIBLE);
+            String logMsg = "[ERROR] " + message + (e != null ? ": " + e.getMessage() : "");
             onLog(logMsg);
+            if (e != null) {
+                e.printStackTrace();
+            }
             Toast.makeText(this, "An Error Occurred", Toast.LENGTH_SHORT).show();
         });
     }
 
-    private void onLog(String message) {
+    @Override
+    public void onLog(String message) {
         runOnUiThread(() -> {
             consoleTextView.append(message + "\n");
             consoleScrollView.post(() -> consoleScrollView.fullScroll(View.FOCUS_DOWN));

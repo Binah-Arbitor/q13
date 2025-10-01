@@ -5,7 +5,6 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
 import java.security.SecureRandom;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -42,6 +41,7 @@ public class ParallelProcessor implements CryptoProcessor {
 
         try (RandomAccessFile rafOut = new RandomAccessFile(destPath, "rw")) {
             rafOut.write(headerBytes);
+            // Pre-allocate file size
             rafOut.setLength(fileLength + headerBytes.length);
 
             long offset = 0;
@@ -63,25 +63,16 @@ public class ParallelProcessor implements CryptoProcessor {
 
             executor.shutdown();
 
+            // Wait for threads to finish and write chunks as they complete
             while (!executor.isTerminated()) {
                 writeFinishedChunks(rafOut, finishedChunks, totalBytesProcessed, fileLength, headerBytes.length, listener);
-                Thread.sleep(100); 
+                Thread.sleep(100); // Wait a bit before checking again
             }
             writeFinishedChunks(rafOut, finishedChunks, totalBytesProcessed, fileLength, headerBytes.length, listener); // Write any remaining chunks
 
             listener.onSuccess("Encryption complete. Output: " + destPath);
         } catch (Exception e) {
             listener.onError("Parallel encryption failed", e);
-        }
-    }
-
-    private void writeFinishedChunks(RandomAccessFile rafOut, ConcurrentLinkedQueue<Chunk> queue, AtomicLong totalBytes, long totalFileLength, int headerSize, CryptoListener listener) throws IOException {
-        Chunk chunk;
-        while ((chunk = queue.poll()) != null) {
-            rafOut.seek(headerSize + chunk.getOffset());
-            rafOut.write(chunk.getData());
-            long processed = totalBytes.addAndGet(chunk.getSize());
-            listener.onProgress(processed, totalFileLength);
         }
     }
 
@@ -96,6 +87,7 @@ public class ParallelProcessor implements CryptoProcessor {
         File sourceFile = new File(sourcePath);
         long fileLength = sourceFile.length();
 
+        // Read header to get crypto options
         try (FileInputStream tempFis = new FileInputStream(sourceFile)) {
             if (manualOptions != null) {
                 options = manualOptions;
@@ -150,5 +142,78 @@ public class ParallelProcessor implements CryptoProcessor {
         } catch (Exception e) {
              listener.onError("Parallel decryption failed", e);
         }
+    }
+
+    private void writeFinishedChunks(RandomAccessFile rafOut, ConcurrentLinkedQueue<Chunk> queue, AtomicLong totalBytes, long totalFileLength, int headerSize, CryptoListener listener) throws IOException {
+        Chunk chunk;
+        while ((chunk = queue.poll()) != null) {
+            rafOut.seek(headerSize + chunk.getOffset());
+            rafOut.write(chunk.getData());
+            long processed = totalBytes.addAndGet(chunk.getSize());
+            listener.onProgress(processed, totalFileLength);
+        }
+    }
+
+    // --- Inner Class for Chunk Processing ---
+    private static class Chunk {
+        private final int index;
+        private final long offset;
+        private final long size;
+        private final String sourcePath;
+        private final SecretKeySpec key;
+        private final byte[] iv;
+        private final CryptoOptions options;
+        private final long headerSize; // Only for decryption
+        private byte[] data;
+
+        // Constructor for encryption
+        Chunk(int index, long offset, long size, String sourcePath, SecretKeySpec key, byte[] iv, CryptoOptions options) {
+            this(index, offset, size, sourcePath, key, iv, options, 0);
+        }
+
+        // Main Constructor
+        Chunk(int index, long offset, long size, String sourcePath, SecretKeySpec key, byte[] iv, CryptoOptions options, long headerSize) {
+            this.index = index;
+            this.offset = offset;
+            this.size = size;
+            this.sourcePath = sourcePath;
+            this.key = key;
+            this.iv = iv;
+            this.options = options;
+            this.headerSize = headerSize;
+        }
+
+        void process(int opmode) throws Exception {
+            byte[] buffer = new byte[(int) size];
+            try (RandomAccessFile raf = new RandomAccessFile(sourcePath, "r")) {
+                raf.seek(headerSize + offset);
+                raf.readFully(buffer);
+            }
+
+            Cipher cipher = Cipher.getInstance(options.getTransformation());
+
+            if (options.getMode().isStreamMode()) {
+                byte[] chunkIv = iv.clone();
+                long ivOffset = offset / (options.getBlockSizeBits() / 8);
+                // Add the offset to the IV. This is critical for parallel stream cipher processing.
+                for (int i = 0; i < chunkIv.length && ivOffset > 0; i++) {
+                    int pos = chunkIv.length - 1 - i;
+                    long val = (chunkIv[pos] & 0xFF) + (ivOffset & 0xFF);
+                    chunkIv[pos] = (byte) val;
+                    ivOffset >>= 8;
+                }
+                cipher.init(opmode, key, new IvParameterSpec(chunkIv));
+            } else {
+                cipher.init(opmode, key, new IvParameterSpec(iv));
+            }
+
+            this.data = cipher.doFinal(buffer);
+        }
+
+        // Getters
+        int getIndex() { return index; }
+        long getOffset() { return offset; }
+        long getSize() { return size; }
+        byte[] getData() { return data; }
     }
 }

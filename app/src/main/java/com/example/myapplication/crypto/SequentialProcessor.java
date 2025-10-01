@@ -13,7 +13,7 @@ import java.security.SecureRandom;
 public class SequentialProcessor implements CryptoProcessor {
 
     @Override
-    public void encrypt(String sourcePath, String destPath, char[] password, CryptoOptions options, int chunkSize, CryptoListener listener) throws Exception {
+    public void encrypt(String sourcePath, String destPath, char[] password, CryptoOptions options, int chunkSize, int threads, CryptoListener listener) throws Exception {
         FileHeader header;
         try (FileInputStream fis = new FileInputStream(sourcePath);
              FileOutputStream fos = new FileOutputStream(destPath)) {
@@ -51,7 +51,7 @@ public class SequentialProcessor implements CryptoProcessor {
     }
 
     @Override
-    public void decrypt(String sourcePath, String destPath, char[] password, CryptoOptions manualOptions, int chunkSize, CryptoListener listener) throws Exception {
+    public void decrypt(String sourcePath, String destPath, char[] password, CryptoOptions manualOptions, int chunkSize, int threads, CryptoListener listener) throws Exception {
         try (FileInputStream fis = new FileInputStream(sourcePath);
              FileOutputStream fos = new FileOutputStream(destPath)) {
 

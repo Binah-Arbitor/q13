@@ -37,7 +37,7 @@ public class CryptoOptions {
     public CryptoProtocol getProtocol() { return protocol; }
     public KeyLength getKeyLength() { return keyLength; }
     public BlockSize getBlockSize() { return blockSize; }
-    public int getBlockSizeBits() { return blockSize.getBits(); }
+    public int getBlockSizeBits() { return (blockSize != null) ? blockSize.getBits() : 0; }
     public CipherMode getMode() { return mode; }
     public Padding getPadding() { return padding; }
     public Kdf getKdf() { return kdf; }
@@ -140,6 +140,15 @@ public class CryptoOptions {
         public int getBits() { return bits; }
         public int getBytes() { return bits / 8; }
         @Override public String toString() { return bits + "-bit"; }
+
+        public static BlockSize fromBits(int bits) {
+            for (BlockSize b : values()) {
+                if (b.bits == bits) {
+                    return b;
+                }
+            }
+            return null; // Or throw an exception
+        }
     }
 
     public enum CipherMode {

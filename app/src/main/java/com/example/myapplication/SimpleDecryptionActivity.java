@@ -130,7 +130,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
             int threads = "Performance".equals(selectedMode) ? Math.max(2, Runtime.getRuntime().availableProcessors()) : 1;
             int chunkSize = 1024 * 1024; // 1 MB
-            String originalFileName = getFileName(selectedFileUri).replaceAll("\.enc$", "");
+            String originalFileName = getFileName(selectedFileUri).replaceAll("\\.enc$", "");
             String destPath = getCacheDir().getAbsolutePath() + "/dec_" + originalFileName;
 
             resetUiState();

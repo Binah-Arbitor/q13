@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -25,8 +26,10 @@ import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -40,6 +43,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private Spinner modeSpinner;
 
     private Uri selectedFileUri;
+    private String sourcePathForTempFile; // To keep track of the temporary file
     private String selectedMode;
     private final CryptoManager cryptoManager = new CryptoManager();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -66,7 +70,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         consoleTextView = findViewById(R.id.console_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         statusTextView = findViewById(R.id.status_textview);
-        modeSpinner = findViewById(R.id.mode_spinner); 
+        modeSpinner = findViewById(R.id.mode_spinner);
     }
 
     private void setupFilePicker() {
@@ -121,21 +125,13 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
 
         try {
+            sourcePathForTempFile = getPathFromUri(selectedFileUri); 
+            if (sourcePathForTempFile == null) return;
+
             CryptoOptions options = CryptoOptions.getDefault();
-
-            int threads;
-            if ("Performance".equals(selectedMode)) {
-                 threads = Math.max(2, Runtime.getRuntime().availableProcessors());
-            } else { 
-                threads = 1;
-            }
-
+            int threads = "Performance".equals(selectedMode) ? Math.max(2, Runtime.getRuntime().availableProcessors()) : 1;
             int chunkSize = 1024 * 1024; // 1 MB
-
-            String sourcePath = getPathFromUri(selectedFileUri);
-            if (sourcePath == null) return; 
-            
-            String destPath = sourcePath + ".enc";
+            String destPath = getCacheDir().getAbsolutePath() + "/" + getFileName(selectedFileUri) + ".enc";
 
             resetUiState();
             setUiEnabled(false);
@@ -143,7 +139,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
             executor.submit(() -> {
                 try {
-                    cryptoManager.encrypt(sourcePath, destPath, password, options, chunkSize, threads, this);
+                    cryptoManager.encrypt(sourcePathForTempFile, destPath, password, options, chunkSize, threads, this);
                 } catch (Exception e) {
                     onError("Encryption failed", e);
                 }
@@ -153,6 +149,56 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
             onError("Failed to start encryption", e);
         }
     }
+
+    @Override
+    public void onSuccess(String message, String outputPath) {
+        runOnUiThread(() -> {
+            onLog("[SUCCESS] " + message);
+            onLog("Overwriting original file...");
+            try {
+                overwriteOriginalFile(outputPath);
+                onLog("File overwritten successfully.");
+                Toast.makeText(this, "Encryption Successful!", Toast.LENGTH_SHORT).show();
+                statusTextView.setText("✓ SUCCESS");
+            } catch (Exception e) {
+                onError("Failed to overwrite original file", e);
+            } finally {
+                cleanupTempFiles(outputPath);
+                setUiEnabled(true);
+                statusTextView.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+    
+    private void overwriteOriginalFile(String resultPath) throws Exception {
+        if (selectedFileUri == null) {
+            throw new IllegalStateException("Original file URI is missing.");
+        }
+        ContentResolver resolver = getContentResolver();
+        try (InputStream in = new FileInputStream(resultPath); 
+             OutputStream out = resolver.openOutputStream(selectedFileUri, "wt")) { // 'wt' for write and truncate
+            if (out == null) {
+                throw new IOException("Failed to open output stream for URI: " + selectedFileUri.toString());
+            }
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+        }
+    }
+    
+    private void cleanupTempFiles(String encryptedFilePath) {
+        if (sourcePathForTempFile != null) {
+            new File(sourcePathForTempFile).delete();
+            sourcePathForTempFile = null;
+        }
+        if (encryptedFilePath != null) {
+            new File(encryptedFilePath).delete();
+        }
+    }
+
+    // Other methods (UI, file handling, listeners) remain largely the same...
 
     private void setUiEnabled(boolean enabled) {
         runOnUiThread(() -> {
@@ -174,8 +220,10 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
     private String getPathFromUri(Uri uri) {
         try {
-            File tempFile = File.createTempFile("temp_simple_enc", ".tmp", getCacheDir());
-            tempFile.deleteOnExit();
+            // Use a unique name to avoid potential conflicts
+            String tempFileName = "temp_simple_enc_" + System.currentTimeMillis();
+            File tempFile = File.createTempFile(tempFileName, ".tmp", getCacheDir());
+            // No need for deleteOnExit() as we will manage it manually
             try (InputStream in = getContentResolver().openInputStream(uri); 
                  FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
@@ -204,8 +252,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         return result;
     }
 
-    // CryptoListener Implementation
-
     @Override
     public void onStart(long totalBytes) {
         runOnUiThread(() -> {
@@ -218,17 +264,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     @Override
     public void onProgress(long currentBytes, long totalBytes) {
         runOnUiThread(() -> progressBar.setProgress((int) currentBytes));
-    }
-
-    @Override
-    public void onSuccess(String message) {
-        runOnUiThread(() -> {
-            setUiEnabled(true);
-            statusTextView.setText("✓ SUCCESS");
-            statusTextView.setVisibility(View.VISIBLE);
-            onLog("[SUCCESS] " + message);
-            Toast.makeText(this, "Encryption Successful!", Toast.LENGTH_SHORT).show();
-        });
     }
 
     @Override

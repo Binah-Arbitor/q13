@@ -46,7 +46,7 @@ public class SequentialProcessor implements CryptoProcessor {
                 listener.onProgress(totalRead, fileLength);
             }
             cos.close(); // Important: flushes the final block
-            listener.onSuccess("Encryption complete. Output: " + destPath);
+            listener.onSuccess("Encryption complete.", destPath);
         }
     }
 
@@ -94,7 +94,7 @@ public class SequentialProcessor implements CryptoProcessor {
                 listener.onProgress(totalRead, contentLength);
             }
             cis.close();
-            listener.onSuccess("Decryption complete. Output: " + destPath);
+            listener.onSuccess("Decryption complete.", destPath);
         }
     }
 }

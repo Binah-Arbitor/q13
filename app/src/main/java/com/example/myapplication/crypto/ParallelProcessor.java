@@ -70,7 +70,7 @@ public class ParallelProcessor implements CryptoProcessor {
             }
             writeFinishedChunks(rafOut, finishedChunks, totalBytesProcessed, fileLength, headerBytes.length, listener); // Write any remaining chunks
 
-            listener.onSuccess("Encryption complete. Output: " + destPath);
+            listener.onSuccess("Encryption complete. Output: " + destPath, destPath);
         } catch (Exception e) {
             listener.onError("Parallel encryption failed", e);
         }
@@ -138,7 +138,7 @@ public class ParallelProcessor implements CryptoProcessor {
             }
             writeFinishedChunks(rafOut, finishedChunks, totalBytesProcessed, contentLength, 0, listener);
 
-            listener.onSuccess("Decryption complete. Output: " + destPath);
+            listener.onSuccess("Decryption complete. Output: " + destPath, destPath);
         } catch (Exception e) {
              listener.onError("Parallel decryption failed", e);
         }

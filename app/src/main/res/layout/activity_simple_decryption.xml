@@ -18,24 +18,17 @@
         android:layout_marginBottom="16dp" />
 
     <Spinner
-        android:id="@+id/decryption_mode_spinner"
+        android:id="@+id/mode_spinner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/title_textview"
-        android:layout_marginBottom="8dp" />
-
-    <Spinner
-        android:id="@+id/thread_mode_spinner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/decryption_mode_spinner"
         android:layout_marginBottom="8dp" />
 
     <EditText
         android:id="@+id/password_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/thread_mode_spinner"
+        android:layout_below="@id/mode_spinner"
         android:hint="Password"
         android:inputType="textPassword"
         android:layout_marginBottom="8dp" />
@@ -55,44 +48,11 @@
         android:layout_marginTop="8dp"
         android:text="No file selected" />
 
-    <LinearLayout
-        android:id="@+id/pgp_key_selection_layout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_below="@id/selected_file_textview"
-        android:visibility="gone" >
-
-        <Button
-            android:id="@+id/private_key_select_button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Select Private Key" />
-
-        <TextView
-            android:id="@+id/private_key_textview"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="No private key selected" />
-
-        <Button
-            android:id="@+id/signer_public_key_select_button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Select Signer Public Key (Optional)" />
-
-        <TextView
-            android:id="@+id/signer_public_key_textview"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="No signer key selected" />
-    </LinearLayout>
-
     <Button
         android:id="@+id/decrypt_button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/pgp_key_selection_layout"
+        android:layout_below="@id/selected_file_textview"
         android:layout_marginTop="16dp"
         android:text="Decrypt File" />
         

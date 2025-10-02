@@ -6,6 +6,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -28,6 +31,7 @@ import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
 import com.example.myapplication.crypto.FileHeader;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -50,6 +54,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     private ScrollView consoleScrollView;
     private CheckBox manualModeCheckbox;
     private LinearLayout headerInfoLayout, manualOptionsLayout;
+    private BottomNavigationView bottomNav;
     
     // Header Info UI
     private TextView infoProtocol, infoKeyLength, infoBlockSize, infoMode, infoPadding, infoKdf;
@@ -84,6 +89,31 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         updateUiForManualMode(false);
     }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.main_overflow_menu, menu);
+        MenuItem switchItem = menu.findItem(R.id.action_switch_mode);
+        switchItem.setTitle("Switch to Simple");
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_switch_mode) {
+            Intent intent = new Intent(AdvancedDecryptionActivity.this, SimpleDecryptionActivity.class);
+            startActivity(intent);
+            finish();
+            return true;
+        } else if (itemId == R.id.action_license) {
+            Intent intent = new Intent(AdvancedDecryptionActivity.this, LicenseActivity.class);
+            startActivity(intent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
     private void initializeViews() {
         passwordInput = findViewById(R.id.password_input);
         fileSelectButton = findViewById(R.id.file_select_button);
@@ -96,6 +126,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         manualModeCheckbox = findViewById(R.id.manual_mode_checkbox);
         headerInfoLayout = findViewById(R.id.header_info_layout);
         manualOptionsLayout = findViewById(R.id.manual_options_layout);
+        bottomNav = findViewById(R.id.bottom_nav);
 
         infoProtocol = findViewById(R.id.info_protocol);
         infoKeyLength = findViewById(R.id.info_key_length);
@@ -152,6 +183,20 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         decryptButton.setOnClickListener(v -> handleDecryption());
 
         manualModeCheckbox.setOnCheckedChangeListener((buttonView, isChecked) -> updateUiForManualMode(isChecked));
+
+        bottomNav.setOnItemSelectedListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_advanced_encrypt) {
+                Intent intent = new Intent(AdvancedDecryptionActivity.this, AdvancedEncryptionActivity.class);
+                startActivity(intent);
+                finish();
+                return true;
+            } else if (itemId == R.id.nav_advanced_decrypt) {
+                return true; // Do nothing
+            }
+            return false;
+        });
+        bottomNav.setSelectedItemId(R.id.nav_advanced_decrypt);
 
         protocolSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override

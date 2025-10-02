@@ -6,6 +6,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -24,6 +27,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -42,6 +46,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private Spinner modeSpinner;
+    private BottomNavigationView bottomNav;
 
     private Uri selectedFileUri;
     private String sourcePathForTempFile; // To keep track of the temporary file
@@ -62,6 +67,32 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         setupEventListeners();
     }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.main_overflow_menu, menu);
+        // We can change the title of the switch mode item dynamically if needed
+        MenuItem switchItem = menu.findItem(R.id.action_switch_mode);
+        switchItem.setTitle("Switch to Advanced");
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_switch_mode) {
+            Intent intent = new Intent(SimpleEncryptionActivity.this, AdvancedEncryptionActivity.class);
+            startActivity(intent);
+            finish(); // Finish current activity to prevent stack buildup
+            return true;
+        } else if (itemId == R.id.action_license) {
+            Intent intent = new Intent(SimpleEncryptionActivity.this, LicenseActivity.class);
+            startActivity(intent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
     private void initializeViews() {
         passwordInput = findViewById(R.id.password_input);
         fileSelectButton = findViewById(R.id.file_select_button);
@@ -72,6 +103,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         consoleScrollView = findViewById(R.id.console_scrollview);
         statusTextView = findViewById(R.id.status_textview);
         modeSpinner = findViewById(R.id.mode_spinner);
+        bottomNav = findViewById(R.id.bottom_nav);
     }
 
     private void setupFilePicker() {
@@ -112,6 +144,22 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         });
 
         encryptButton.setOnClickListener(v -> handleEncryption());
+
+        bottomNav.setOnItemSelectedListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_simple_decrypt) {
+                Intent intent = new Intent(SimpleEncryptionActivity.this, SimpleDecryptionActivity.class);
+                startActivity(intent);
+                finish(); // Finish current activity
+                return true;
+            } else if (itemId == R.id.nav_simple_encrypt) {
+                // Already on this screen, do nothing
+                return true;
+            }
+            return false;
+        });
+        // Ensure the correct item is selected on launch
+        bottomNav.setSelectedItemId(R.id.nav_simple_encrypt);
     }
 
     private void handleEncryption() {
@@ -199,8 +247,6 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
         }
     }
 
-    // Other methods (UI, file handling, listeners) remain largely the same...
-
     private void setUiEnabled(boolean enabled) {
         runOnUiThread(() -> {
             passwordInput.setEnabled(enabled);
@@ -221,10 +267,8 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
 
     private String getPathFromUri(Uri uri) {
         try {
-            // Use a unique name to avoid potential conflicts
             String tempFileName = "temp_simple_enc_" + System.currentTimeMillis();
             File tempFile = File.createTempFile(tempFileName, ".tmp", getCacheDir());
-            // No need for deleteOnExit() as we will manage it manually
             try (InputStream in = getContentResolver().openInputStream(uri); 
                  FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
@@ -279,6 +323,7 @@ public class SimpleEncryptionActivity extends AppCompatActivity implements Crypt
                 e.printStackTrace();
             }
             Toast.makeText(this, "An Error Occurred", Toast.LENGTH_SHORT).show();
+            cleanupTempFiles(null); // Clean up temp files on error
         });
     }
 

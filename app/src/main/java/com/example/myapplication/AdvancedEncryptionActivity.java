@@ -6,6 +6,9 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -25,6 +28,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -48,6 +52,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     private ProgressBar progressBar;
     private ScrollView consoleScrollView;
     private View blockSpinnerLabel;
+    private BottomNavigationView bottomNav;
 
     private Uri selectedFileUri;
     private String sourcePathForTempFile; // To keep track of the temporary file
@@ -66,6 +71,31 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         setupFilePicker();
         setupSpinners();
         setupEventListeners();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.main_overflow_menu, menu);
+        MenuItem switchItem = menu.findItem(R.id.action_switch_mode);
+        switchItem.setTitle("Switch to Simple");
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_switch_mode) {
+            Intent intent = new Intent(AdvancedEncryptionActivity.this, SimpleEncryptionActivity.class);
+            startActivity(intent);
+            finish();
+            return true;
+        } else if (itemId == R.id.action_license) {
+            Intent intent = new Intent(AdvancedEncryptionActivity.this, LicenseActivity.class);
+            startActivity(intent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
     }
 
     private void initializeViews() {
@@ -88,6 +118,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         consoleTextView = findViewById(R.id.console_textview);
         consoleScrollView = findViewById(R.id.console_scrollview);
         statusTextView = findViewById(R.id.status_textview);
+        bottomNav = findViewById(R.id.bottom_nav);
     }
 
     private void setupFilePicker() {
@@ -148,6 +179,20 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         });
 
         encryptButton.setOnClickListener(v -> handleEncryption());
+
+        bottomNav.setOnItemSelectedListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.nav_advanced_decrypt) {
+                Intent intent = new Intent(AdvancedEncryptionActivity.this, AdvancedDecryptionActivity.class);
+                startActivity(intent);
+                finish();
+                return true;
+            } else if (itemId == R.id.nav_advanced_encrypt) {
+                return true; // Do nothing
+            }
+            return false;
+        });
+        bottomNav.setSelectedItemId(R.id.nav_advanced_encrypt);
 
         int maxThreads = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
         threadCountSlider.setMax(maxThreads - 1);
@@ -446,6 +491,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 e.printStackTrace();
             }
             Toast.makeText(AdvancedEncryptionActivity.this, "An Error Occurred", Toast.LENGTH_SHORT).show();
+            cleanupTempFiles(null); // Clean up temp files on error
         });
     }
 

@@ -238,12 +238,12 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         CryptoOptions.CryptoProtocol selectedProtocol = (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem();
         if (selectedProtocol == null) return;
 
-        List<Integer> supportedBlockSizes = selectedProtocol.getSupportedBlockBits();
-        ArrayAdapter<Integer> blockAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, supportedBlockSizes);
+        List<CryptoOptions.BlockSize> supportedBlockSizes = selectedProtocol.getSupportedBlockSizes();
+        ArrayAdapter<CryptoOptions.BlockSize> blockAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, supportedBlockSizes);
         blockAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         blockSpinner.setAdapter(blockAdapter);
 
-        boolean isVisible = !supportedBlockSizes.isEmpty();
+        boolean isVisible = supportedBlockSizes != null && !supportedBlockSizes.isEmpty();
         blockSpinner.setVisibility(isVisible ? View.VISIBLE : View.GONE);
         blockSpinnerLabel.setVisibility(isVisible ? View.VISIBLE : View.GONE);
 
@@ -312,12 +312,12 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         try {
             CryptoOptions.CryptoProtocol protocol = (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem();
             CryptoOptions.KeyLength keyLength = (CryptoOptions.KeyLength) keyLengthSpinner.getSelectedItem();
-            Integer blockSize = (blockSpinner.getVisibility() == View.VISIBLE) ? (Integer) blockSpinner.getSelectedItem() : 0;
+            CryptoOptions.BlockSize blockSize = (blockSpinner.getVisibility() == View.VISIBLE) ? (CryptoOptions.BlockSize) blockSpinner.getSelectedItem() : null;
             CryptoOptions.CipherMode mode = (CryptoOptions.CipherMode) modeSpinner.getSelectedItem();
             CryptoOptions.Padding padding = paddingSpinner.isEnabled() ? (CryptoOptions.Padding) paddingSpinner.getSelectedItem() : CryptoOptions.Padding.NoPadding;
             CryptoOptions.Kdf kdf = (CryptoOptions.Kdf) kdfSpinner.getSelectedItem();
 
-            if (protocol == null || keyLength == null || mode == null || kdf == null) {
+            if (protocol == null || keyLength == null || mode == null || kdf == null || (blockSpinner.getVisibility() == View.VISIBLE && blockSize == null)) {
                 onError("A required dropdown option is not selected.", null);
                 return;
             }

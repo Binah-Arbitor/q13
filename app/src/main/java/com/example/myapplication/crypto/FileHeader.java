@@ -6,6 +6,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 
 public class FileHeader {
     private static final byte[] MAGIC_BYTES = new byte[]{(byte) 0x8A, (byte) 0xCE, (byte) 0xDA, (byte) 0xFE};
@@ -32,7 +33,7 @@ public class FileHeader {
     public byte[] getSalt() {
         return salt;
     }
-    
+
     public byte[] getAADBytes() throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(baos);
@@ -53,7 +54,12 @@ public class FileHeader {
     }
 
     public void writeTo(OutputStream stream) throws IOException {
-        DataOutputStream dos = new DataOutputStream(stream);
+        stream.write(getHeaderBytes());
+    }
+    
+    public byte[] getHeaderBytes() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream dos = new DataOutputStream(baos);
         dos.write(MAGIC_BYTES);
         dos.writeInt(HEADER_VERSION);
 
@@ -69,6 +75,11 @@ public class FileHeader {
         dos.writeInt(salt.length);
         dos.write(salt);
         dos.flush();
+        return baos.toByteArray();
+    }
+    
+    public int getHeaderSize() throws IOException {
+        return getHeaderBytes().length;
     }
 
     public static FileHeader fromStream(InputStream stream) throws IOException {

@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -24,8 +25,11 @@ import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -39,6 +43,7 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     private Spinner modeSpinner;
 
     private Uri selectedFileUri;
+    private String sourcePathForTempFile; // To keep track of the temporary file
     private String selectedMode;
     private final CryptoManager cryptoManager = new CryptoManager();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -120,23 +125,21 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
         }
 
         try {
+            sourcePathForTempFile = getPathFromUri(selectedFileUri);
+            if (sourcePathForTempFile == null) return;
+
             int threads = "Performance".equals(selectedMode) ? Math.max(2, Runtime.getRuntime().availableProcessors()) : 1;
             int chunkSize = 1024 * 1024; // 1 MB
-
-            String sourcePath = getPathFromUri(selectedFileUri);
-            if (sourcePath == null) return; 
-            
-            String originalFileName = getFileName(selectedFileUri).replaceAll("\\.enc$", "");
-            File destFile = new File(getCacheDir(), "dec_" + originalFileName);
-            String destPath = destFile.getAbsolutePath();
+            String originalFileName = getFileName(selectedFileUri).replaceAll("\.enc$", "");
+            String destPath = getCacheDir().getAbsolutePath() + "/dec_" + originalFileName;
 
             resetUiState();
             setUiEnabled(false);
-            onLog("Starting decryption (" + selectedMode + " Mode, " + threads + " threads)...");
+            onLog("Starting decryption...");
 
             executor.submit(() -> {
                 try {
-                    cryptoManager.decrypt(sourcePath, destPath, password, null, chunkSize, threads, this);
+                    cryptoManager.decrypt(sourcePathForTempFile, destPath, password, null, chunkSize, threads, this);
                 } catch (Exception e) {
                     onError("Decryption failed", e);
                 }
@@ -144,6 +147,54 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
         } catch (Exception e) {
             onError("Failed to start decryption", e);
+        }
+    }
+
+    @Override
+    public void onSuccess(String message, String outputPath) {
+        runOnUiThread(() -> {
+            onLog("[SUCCESS] " + message);
+            onLog("Overwriting original file...");
+            try {
+                overwriteOriginalFile(outputPath);
+                onLog("File overwritten successfully.");
+                Toast.makeText(this, "Decryption Successful!", Toast.LENGTH_SHORT).show();
+                statusTextView.setText("✓ SUCCESS");
+            } catch (Exception e) {
+                onError("Failed to overwrite original file", e);
+            } finally {
+                cleanupTempFiles(outputPath);
+                setUiEnabled(true);
+                statusTextView.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    private void overwriteOriginalFile(String resultPath) throws Exception {
+        if (selectedFileUri == null) {
+            throw new IllegalStateException("Original file URI is missing.");
+        }
+        ContentResolver resolver = getContentResolver();
+        try (InputStream in = new FileInputStream(resultPath); 
+             OutputStream out = resolver.openOutputStream(selectedFileUri, "wt")) { // 'wt' for write and truncate
+            if (out == null) {
+                throw new IOException("Failed to open output stream for URI: " + selectedFileUri.toString());
+            }
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+        }
+    }
+    
+    private void cleanupTempFiles(String decryptedFilePath) {
+        if (sourcePathForTempFile != null) {
+            new File(sourcePathForTempFile).delete();
+            sourcePathForTempFile = null;
+        }
+        if (decryptedFilePath != null) {
+            new File(decryptedFilePath).delete();
         }
     }
 
@@ -167,8 +218,8 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
 
     private String getPathFromUri(Uri uri) {
        try {
-            File tempFile = File.createTempFile("temp_simple_dec", ".tmp", getCacheDir());
-            tempFile.deleteOnExit();
+            String tempFileName = "temp_simple_dec_" + System.currentTimeMillis();
+            File tempFile = File.createTempFile(tempFileName, ".tmp", getCacheDir());
             try (InputStream in = getContentResolver().openInputStream(uri); 
                  FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
@@ -211,17 +262,6 @@ public class SimpleDecryptionActivity extends AppCompatActivity implements Crypt
     @Override
     public void onProgress(long currentBytes, long totalBytes) {
         runOnUiThread(() -> progressBar.setProgress((int) currentBytes));
-    }
-
-    @Override
-    public void onSuccess(String message) {
-        runOnUiThread(() -> {
-            setUiEnabled(true);
-            statusTextView.setText("✓ SUCCESS");
-            statusTextView.setVisibility(View.VISIBLE);
-            onLog("[SUCCESS] " + message);
-            Toast.makeText(this, "Decryption Successful!", Toast.LENGTH_SHORT).show();
-        });
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -31,7 +32,9 @@ import com.example.myapplication.crypto.FileHeader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -61,7 +64,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
 
     // Member Variables
     private Uri selectedFileUri;
-    private String tempSourcePath;
+    private String sourcePathForTempFile; // To keep track of the temporary file
     private final CryptoManager cryptoManager = new CryptoManager();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private ActivityResultLauncher<Intent> filePickerLauncher;
@@ -213,9 +216,9 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         resetUiState();
         
         new Thread(() -> {
-            tempSourcePath = getPathFromUri(selectedFileUri); 
-            if (tempSourcePath != null) {
-                try (InputStream fis = new FileInputStream(tempSourcePath)) {
+            sourcePathForTempFile = getPathFromUri(selectedFileUri); 
+            if (sourcePathForTempFile != null) {
+                try (InputStream fis = new FileInputStream(sourcePathForTempFile)) {
                     FileHeader header = FileHeader.fromStream(fis);
                     runOnUiThread(() -> displayHeaderInfo(header.getOptions()));
                 } catch (Exception e) {
@@ -239,7 +242,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     }
 
     private void handleDecryption() {
-        if (tempSourcePath == null) {
+        if (sourcePathForTempFile == null) {
             onError("Please select a file first.", null);
             return;
         }
@@ -274,8 +277,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             int chunkSize = CHUNK_SIZES_KB[chunkSizeSlider.getProgress()] * 1024;
 
             String originalFileName = getFileName(selectedFileUri).replaceAll("\\.enc$|\\.tmp$", "");
-            File destFile = new File(getExternalCacheDir(), "dec_" + originalFileName);
-            String destPath = destFile.getAbsolutePath();
+            String destPath = getCacheDir().getAbsolutePath() + "/dec_" + originalFileName;
 
             resetUiState();
             setUiEnabled(false);
@@ -283,7 +285,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             final CryptoOptions finalManualOptions = manualOptions;
             executor.submit(() -> {
                 try {
-                    cryptoManager.decrypt(tempSourcePath, destPath, password, finalManualOptions, chunkSize, threads, this);
+                    cryptoManager.decrypt(sourcePathForTempFile, destPath, password, finalManualOptions, chunkSize, threads, this);
                 } catch (Exception e) {
                     onError("Decryption failed", e);
                 }
@@ -291,6 +293,52 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
 
         } catch (Exception e) {
             onError("Failed to start decryption", e);
+        }
+    }
+
+    @Override
+    public void onSuccess(String message, String outputPath) {
+        runOnUiThread(() -> {
+            onLog("[SUCCESS] " + message);
+            onLog("Overwriting original file...");
+            try {
+                overwriteOriginalFile(outputPath);
+                onLog("File overwritten successfully.");
+                Toast.makeText(this, "Decryption Successful!", Toast.LENGTH_SHORT).show();
+                statusTextView.setText("✓ SUCCESS");
+            } catch (Exception e) {
+                onError("Failed to overwrite original file", e);
+            } finally {
+                cleanupTempFiles(outputPath);
+                setUiEnabled(true);
+                statusTextView.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    private void overwriteOriginalFile(String resultPath) throws Exception {
+        if (selectedFileUri == null) {
+            throw new IllegalStateException("Original file URI is missing.");
+        }
+        ContentResolver resolver = getContentResolver();
+        try (InputStream in = new FileInputStream(resultPath);
+             OutputStream out = resolver.openOutputStream(selectedFileUri, "wt")) { // 'wt' for write and truncate
+            if (out == null) {
+                throw new IOException("Failed to open output stream for URI: " + selectedFileUri.toString());
+            }
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+        }
+    }
+
+    private void cleanupTempFiles(String decryptedFilePath) {
+        // The main temp file (sourcePathForTempFile) is handled by deleteOnExit().
+        // We only need to delete the final decrypted output file from cache.
+        if (decryptedFilePath != null) {
+            new File(decryptedFilePath).delete();
         }
     }
     
@@ -389,8 +437,11 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
 
     private String getPathFromUri(Uri uri) {
         try {
-            File tempFile = File.createTempFile("temp_adv_dec", ".tmp", getCacheDir());
-            tempFile.deleteOnExit();
+            String tempFileName = "temp_adv_dec_" + System.currentTimeMillis();
+            File tempFile = File.createTempFile(tempFileName, ".tmp", getCacheDir());
+            // Note: Using deleteOnExit() might not be reliable on all Android versions/devices for files in cache.
+            // A more robust cleanup is done in onSuccess/onError.
+            sourcePathForTempFile = tempFile.getAbsolutePath();
             try (InputStream in = getContentResolver().openInputStream(uri); 
                  FileOutputStream out = new FileOutputStream(tempFile)) {
                 byte[] buffer = new byte[8192];
@@ -436,17 +487,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     }
 
     @Override
-    public void onSuccess(String message) {
-        runOnUiThread(() -> {
-            setUiEnabled(true);
-            statusTextView.setText("✓ SUCCESS");
-            statusTextView.setVisibility(View.VISIBLE);
-            onLog("[SUCCESS] " + message);
-            Toast.makeText(this, "Decryption Successful!", Toast.LENGTH_SHORT).show();
-        });
-    }
-
-    @Override
     public void onError(String message, Exception e) {
         runOnUiThread(() -> {
             setUiEnabled(true);
@@ -456,6 +496,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             onLog(logMsg);
             if (e != null) e.printStackTrace();
             Toast.makeText(this, "An Error Occurred", Toast.LENGTH_SHORT).show();
+            cleanupTempFiles(null); // Clean up on error as well
         });
     }
 

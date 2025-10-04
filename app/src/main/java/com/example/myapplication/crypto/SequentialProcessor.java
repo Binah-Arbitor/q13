@@ -121,19 +121,15 @@ public class SequentialProcessor implements IProcessor {
         CryptoOptions.CipherMode mode = options.getMode();
 
         if (mode.isAeadMode()) {
-            // GCM and CCM require a specific tag length. 128 bits (16 bytes) is standard.
-            // OCB would need a different spec, but we'll focus on GCM/CCM for now.
             if (mode == CryptoOptions.CipherMode.GCM || mode == CryptoOptions.CipherMode.CCM) {
-                 return new GCMParameterSpec(128, iv);
+                 return new GCMParameterSpec(options.getTagLength().getBits(), iv);
             }
         }
         
-        // Modes like ECB don't use an IV.
         if (mode == CryptoOptions.CipherMode.ECB || mode == CryptoOptions.CipherMode.WRAP) {
             return null;
         }
 
-        // Default for CBC, CTR, OFB, CFB, etc.
         return new IvParameterSpec(iv);
     }
 }

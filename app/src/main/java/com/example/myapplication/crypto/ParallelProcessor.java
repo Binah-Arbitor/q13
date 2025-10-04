@@ -118,7 +118,7 @@ public class ParallelProcessor implements IProcessor {
 
         if (mode.isAeadMode()) {
             if (mode == CryptoOptions.CipherMode.GCM || mode == CryptoOptions.CipherMode.CCM) {
-                 return new GCMParameterSpec(128, iv);
+                 return new GCMParameterSpec(options.getTagLength().getBits(), iv);
             }
         }
         

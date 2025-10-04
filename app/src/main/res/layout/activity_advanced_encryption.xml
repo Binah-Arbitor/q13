@@ -66,6 +66,24 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
 
+            <!-- Tag Length Spinner (for AEAD modes) -->
+            <LinearLayout
+                android:id="@+id/tag_length_layout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Authentication Tag Length" />
+                <Spinner
+                    android:id="@+id/tag_length_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -136,6 +154,7 @@
                 android:progress="0" />
 
             <LinearLayout
+                android:id="@+id/thread_count_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -231,7 +250,7 @@
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android.layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         app:menu="@menu/advanced_bottom_nav_menu" />
 

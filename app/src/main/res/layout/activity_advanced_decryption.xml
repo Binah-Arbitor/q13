@@ -17,25 +17,23 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- File Selection -->
+            <!-- File Selection and Password -->
             <Button
                 android:id="@+id/file_select_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Select .enc File" />
+                android:text="Select File to Decrypt" />
 
             <TextView
                 android:id="@+id/selected_file_textview"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="No file selected"
-                android:padding="8dp"/>
+                android:text="No file selected" />
 
             <EditText
                 android:id="@+id/password_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:inputType="textPassword"
                 android:hint="Password" />
 
             <!-- Manual Settings Checkbox -->
@@ -45,7 +43,7 @@
                 android:layout_height="wrap_content"
                 android:text="Override settings manually" />
 
-            <!-- Manual Settings Layout -->
+            <!-- Manual Settings Layout (Initially Hidden) -->
             <LinearLayout
                 android:id="@+id/manual_settings_layout"
                 android:layout_width="match_parent"
@@ -54,10 +52,11 @@
                 android:visibility="gone"
                 tools:visibility="visible">
 
+                <!-- Cipher Settings -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Cipher Settings (Manual)"
+                    android:text="Cipher Settings"
                     android:textAppearance="?android:attr/textAppearanceMedium"
                     android:textStyle="bold" />
 
@@ -82,6 +81,7 @@
                     android:layout_height="wrap_content" />
 
                 <TextView
+                    android:id="@+id/block_size_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
@@ -100,12 +100,13 @@
                     android:id="@+id/mode_spinner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
-                
+
                 <LinearLayout
                     android:id="@+id/tag_length_layout"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
+
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -127,11 +128,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 
+                <!-- Key Derivation -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:text="Key Derivation (Manual)"
+                    android:text="Key Derivation"
                     android:textAppearance="?android:attr/textAppearanceMedium"
                     android:textStyle="bold" />
 
@@ -145,18 +147,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
             </LinearLayout>
-            
-             <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="?android:attr/listDivider"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="16dp"/>
 
-            <!-- Performance Settings -->
+            <!-- Performance and Action -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 android:text="Performance"
                 android:textAppearance="?android:attr/textAppearanceMedium"
                 android:textStyle="bold" />
@@ -164,8 +160,8 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -184,11 +180,11 @@
                 android:max="12"
                 android:progress="0" />
 
-
             <Button
                 android:id="@+id/decrypt_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
                 android:text="Decrypt" />
 
             <!-- Status and Console -->
@@ -227,8 +223,8 @@
                     android:id="@+id/console_textview"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:padding="8dp"
-                    android:fontFamily="monospace"/>
+                    android:fontFamily="monospace"
+                    android:padding="8dp" />
             </ScrollView>
 
         </LinearLayout>

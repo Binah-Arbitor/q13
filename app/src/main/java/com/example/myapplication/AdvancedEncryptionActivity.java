@@ -270,6 +270,11 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             logToConsole(message + "\n" + e.toString());
         });
     }
+    
+    @Override
+    public void onLog(String message) {
+        runOnUiThread(() -> logToConsole(message));
+    }
 
     // Utility Methods
     private void logToConsole(String message) {

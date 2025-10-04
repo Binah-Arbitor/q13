@@ -29,6 +29,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.UUID;
 
 public class AdvancedDecryptionActivity extends AppCompatActivity implements CryptoListener {
@@ -37,7 +38,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     private Uri selectedFileUri;
 
     private Spinner protocolSpinner, keyLengthSpinner, blockSizeSpinner, modeSpinner, paddingSpinner, kdfSpinner, tagLengthSpinner;
-    private TextView selectedFileTextView, statusTextView, consoleTextView, chunkSizeTextView, threadCountTextView;
+    private TextView selectedFileTextView, statusTextView, consoleTextView, chunkSizeTextView;
     private ProgressBar progressBar;
     private Button fileSelectButton, decryptButton;
     private EditText passwordInput;
@@ -82,6 +83,24 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         setupCheckboxListener();
 
         manualSettingsLayout.setVisibility(View.GONE);
+    }
+    
+    private void setUiEnabled(boolean enabled) {
+        manualSettingsCheckbox.setEnabled(enabled);
+        fileSelectButton.setEnabled(enabled);
+        decryptButton.setEnabled(enabled);
+        passwordInput.setEnabled(enabled);
+        chunkSizeSlider.setEnabled(enabled);
+
+        // Only enable manual spinners if the checkbox is checked
+        boolean manualEnabled = enabled && manualSettingsCheckbox.isChecked();
+        protocolSpinner.setEnabled(manualEnabled);
+        keyLengthSpinner.setEnabled(manualEnabled);
+        blockSizeSpinner.setEnabled(manualEnabled);
+        modeSpinner.setEnabled(manualEnabled);
+        paddingSpinner.setEnabled(manualEnabled);
+        kdfSpinner.setEnabled(manualEnabled);
+        tagLengthSpinner.setEnabled(manualEnabled);
     }
 
     private void setupSpinners() {
@@ -147,7 +166,8 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     private void setupCheckboxListener() {
         manualSettingsCheckbox.setOnCheckedChangeListener((buttonView, isChecked) -> {
             manualSettingsLayout.setVisibility(isChecked ? View.VISIBLE : View.GONE);
-            if (!isChecked) {
+             setUiEnabled(true); // Re-evaluate UI state
+            if (!isChecked && selectedFileUri != null) {
                 readHeaderAndAutoPopulate();
             }
         });
@@ -248,6 +268,9 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
 
         } catch (Exception e) {
             logToConsole("Could not read file header: " + e.getMessage());
+            // If we can't read the header, force manual mode
+            manualSettingsCheckbox.setChecked(true);
+            logToConsole("Switched to manual settings mode.");
         }
     }
 
@@ -256,15 +279,17 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         for (int i = 0; i < adapter.getCount(); i++) {
             if (adapter.getItem(i).equals(value)) {
                 spinner.setSelection(i);
-                break;
+                return;
             }
         }
+        // If value not found, it might be an unsupported value in the current config
+        logToConsole("Warning: Could not auto-set spinner for value: " + value);
     }
 
-    // CryptoListener Implementation
     @Override
     public void onStart(long totalSize) {
         runOnUiThread(() -> {
+            setUiEnabled(false);
             consoleTextView.setText("");
             logToConsole("Starting decryption...");
             logToConsole("Total size: " + totalSize + " bytes");
@@ -283,6 +308,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     @Override
     public void onSuccess(String message, String outputPath) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
             progressBar.setVisibility(View.GONE);
             statusTextView.setText("✓ SUCCESS");
             statusTextView.setVisibility(View.VISIBLE);
@@ -294,6 +320,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     @Override
     public void onError(String message, Exception e) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
             progressBar.setVisibility(View.GONE);
             statusTextView.setText("✗ ERROR");
             statusTextView.setVisibility(View.VISIBLE);
@@ -306,7 +333,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         runOnUiThread(() -> logToConsole(message));
     }
 
-    // Utility Methods
     private void logToConsole(String message) {
         consoleTextView.append(message + "\n");
     }
@@ -352,11 +378,6 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             e.printStackTrace();
             return null;
         }
-    }
-
-    private String getPathFromUri(Uri uri) {
-        // This method is now DEPRECATED and should not be used.
-        return null;
     }
     
     private int getChunkSizeInBytes(int progress) {

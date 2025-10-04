@@ -80,6 +80,21 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         setupButtonListeners();
     }
 
+    private void setUiEnabled(boolean enabled) {
+        protocolSpinner.setEnabled(enabled);
+        keyLengthSpinner.setEnabled(enabled);
+        blockSizeSpinner.setEnabled(enabled);
+        modeSpinner.setEnabled(enabled);
+        paddingSpinner.setEnabled(enabled);
+        kdfSpinner.setEnabled(enabled);
+        tagLengthSpinner.setEnabled(enabled);
+        fileSelectButton.setEnabled(enabled);
+        encryptButton.setEnabled(enabled);
+        passwordInput.setEnabled(enabled);
+        chunkSizeSlider.setEnabled(enabled);
+        threadCountSlider.setEnabled(enabled);
+    }
+
     private void setupSpinners() {
         // Protocol Spinner
         protocolSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CryptoOptions.CryptoProtocol.values()));
@@ -128,9 +143,15 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         modeSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, selectedProtocol.getSupportedModes()));
 
         // Restore defaults if possible
-        keyLengthSpinner.setSelection(selectedProtocol.getSupportedKeyLengths().indexOf(CryptoOptions.getDefault().getKeyLength()));
-        blockSizeSpinner.setSelection(selectedProtocol.getSupportedBlockSizes().indexOf(CryptoOptions.getDefault().getBlockSize()));
-        modeSpinner.setSelection(selectedProtocol.getSupportedModes().indexOf(CryptoOptions.getDefault().getMode()));
+        if (selectedProtocol.getSupportedKeyLengths().contains(CryptoOptions.getDefault().getKeyLength())) {
+            keyLengthSpinner.setSelection(selectedProtocol.getSupportedKeyLengths().indexOf(CryptoOptions.getDefault().getKeyLength()));
+        }
+        if (selectedProtocol.getSupportedBlockSizes().contains(CryptoOptions.getDefault().getBlockSize())) {
+            blockSizeSpinner.setSelection(selectedProtocol.getSupportedBlockSizes().indexOf(CryptoOptions.getDefault().getBlockSize()));
+        }
+        if (selectedProtocol.getSupportedModes().contains(CryptoOptions.getDefault().getMode())) {
+            modeSpinner.setSelection(selectedProtocol.getSupportedModes().indexOf(CryptoOptions.getDefault().getMode()));
+        }
         
         updatePaddingAndTagSpinners();
     }
@@ -148,7 +169,9 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         } else {
             paddingSpinner.setEnabled(true);
             paddingSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, CryptoOptions.Padding.values()));
-            paddingSpinner.setSelection(Arrays.asList(CryptoOptions.Padding.values()).indexOf(CryptoOptions.getDefault().getPadding()));
+            if (Arrays.asList(CryptoOptions.Padding.values()).contains(CryptoOptions.getDefault().getPadding())) {
+                paddingSpinner.setSelection(Arrays.asList(CryptoOptions.Padding.values()).indexOf(CryptoOptions.getDefault().getPadding()));
+            }
         }
     }
 
@@ -199,14 +222,12 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             }
 
             try {
-                // Use the new, safe method to get a usable file path
                 String inputPath = copyUriToCache(selectedFileUri);
                 if (inputPath == null) {
                     onError("File processing failed.", new Exception("Could not copy file to cache."));
                     return;
                 }
                 
-                // Adjust output path to be in the cache directory as well
                 String originalFileName = getFileName(selectedFileUri);
                 String outputPath = getCacheDir().getAbsolutePath() + File.separator + originalFileName + ".enc";
 
@@ -242,10 +263,10 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
     }
 
-    // CryptoListener Implementation
     @Override
     public void onStart(long totalSize) {
         runOnUiThread(() -> {
+            setUiEnabled(false);
             consoleTextView.setText("");
             logToConsole("Starting encryption...");
             logToConsole("Total size: " + totalSize + " bytes");
@@ -266,6 +287,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     @Override
     public void onSuccess(String message, String outputPath) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
             progressBar.setVisibility(View.GONE);
             statusTextView.setText("✓ SUCCESS");
             statusTextView.setVisibility(View.VISIBLE);
@@ -277,6 +299,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
     @Override
     public void onError(String message, Exception e) {
         runOnUiThread(() -> {
+            setUiEnabled(true);
             progressBar.setVisibility(View.GONE);
             statusTextView.setText("✗ ERROR");
             statusTextView.setVisibility(View.VISIBLE);
@@ -289,7 +312,6 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         runOnUiThread(() -> logToConsole(message));
     }
 
-    // Utility Methods
     private void logToConsole(String message) {
         consoleTextView.append(message + "\n");
     }
@@ -337,14 +359,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
         }
     }
 
-    private String getPathFromUri(Uri uri) {
-        // This method is now DEPRECATED and should not be used.
-        // The copyUriToCache method should be used instead.
-        return null; 
-    }
-
     private int getChunkSizeInBytes(int progress) {
-        // Maps slider progress to chunk size (e.g., 4KB, 8KB, ..., 16MB)
         return (int) (Math.pow(2, progress) * 4 * 1024);
     }
 

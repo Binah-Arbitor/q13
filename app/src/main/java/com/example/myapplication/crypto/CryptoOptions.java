@@ -10,23 +10,29 @@ public class CryptoOptions {
     private final BlockSize blockSize;
     private final CipherMode mode;
     private final Padding padding;
+    private final TagLength tagLength; // New field
     private final Kdf kdf;
 
-    public CryptoOptions(CryptoProtocol protocol, KeyLength keyLength, BlockSize blockSize, CipherMode mode, Padding padding, Kdf kdf) {
+    public CryptoOptions(CryptoProtocol protocol, KeyLength keyLength, BlockSize blockSize, CipherMode mode, Padding padding, TagLength tagLength, Kdf kdf) {
         this.protocol = protocol;
         this.keyLength = keyLength;
         this.blockSize = blockSize;
         this.mode = mode;
         this.padding = padding;
+        this.tagLength = tagLength; // New field
         this.kdf = kdf;
     }
 
     public static CryptoOptions getDefault() {
-        return new CryptoOptions(CryptoProtocol.AES, KeyLength.BITS_256, BlockSize.BITS_128, CipherMode.GCM, Padding.NoPadding, Kdf.PBKDF2WithHmacSHA256);
+        return new CryptoOptions(CryptoProtocol.AES, KeyLength.BITS_256, BlockSize.BITS_128, CipherMode.GCM, Padding.NoPadding, TagLength.BITS_128, Kdf.PBKDF2WithHmacSHA256);
     }
 
     public String getTransformation() {
-        return protocol.name() + "/" + mode.name() + "/" + padding.name();
+        if (mode.isStreamMode() || padding == Padding.NoPadding) {
+            return protocol.name() + "/" + mode.name();
+        } else {
+            return protocol.name() + "/" + mode.name() + "/" + padding.name();
+        }
     }
 
     public boolean requiresAAD() {
@@ -40,13 +46,20 @@ public class CryptoOptions {
     public int getBlockSizeBits() { return (blockSize != null) ? blockSize.getBits() : 0; }
     public CipherMode getMode() { return mode; }
     public Padding getPadding() { return padding; }
+    public TagLength getTagLength() { return tagLength; } // New getter
     public Kdf getKdf() { return kdf; }
 
     @Override
     public String toString() {
-        return String.format("%s-%d/%s/%s (KDF: %s)", protocol, keyLength.getBits(), mode, padding, kdf);
+        String format = (tagLength != null && mode.isAeadMode()) 
+            ? "%s-%d/%s/%s (Tag: %d, KDF: %s)" 
+            : "%s-%d/%s/%s (KDF: %s)";
+        return String.format(format, protocol, keyLength.getBits(), mode, padding, 
+            (tagLength != null && mode.isAeadMode()) ? tagLength.getBits() : kdf, 
+            kdf);
     }
 
+    // Enums ...
     public enum CryptoProtocol {
         AES("AES", Arrays.asList(KeyLength.BITS_128, KeyLength.BITS_192, KeyLength.BITS_256), Arrays.asList(BlockSize.BITS_128),
             Arrays.asList(CipherMode.ECB, CipherMode.CBC, CipherMode.CTR, CipherMode.OFB, CipherMode.CFB, CipherMode.GCM, CipherMode.CCM, CipherMode.WRAP, CipherMode.OCB, CipherMode.XTS)),
@@ -147,22 +160,40 @@ public class CryptoOptions {
                     return b;
                 }
             }
-            return null; // Or throw an exception
+            return null;
         }
     }
 
     public enum CipherMode {
-        ECB, CBC, CTR, OFB, CFB, WRAP, // Standard modes
-        GCM, CCM, OCB, EAX,           // Authenticated Encryption with Associated Data (AEAD) modes
-        XTS;                           // Mode for disk encryption
+        ECB, CBC, CTR, OFB, CFB, WRAP, 
+        GCM, CCM, OCB, EAX,          
+        XTS;                         
 
         public boolean isStreamMode() {
-            // ECB and CBC are not stream modes. WRAP is a special case.
-            return this != ECB && this != CBC && this != WRAP;
+            return this == CTR || this == OFB || this == CFB || isAeadMode();
         }
         
         public boolean isAeadMode() {
             return this == GCM || this == CCM || this == OCB || this == EAX;
+        }
+    }
+    
+    // New Enum for Tag Length
+    public enum TagLength {
+        BITS_128(128), BITS_120(120), BITS_112(112), BITS_104(104), BITS_96(96);
+
+        private final int bits;
+        TagLength(int bits) { this.bits = bits; }
+        public int getBits() { return bits; }
+        @Override public String toString() { return bits + "-bit"; }
+
+        public static TagLength fromBits(int bits) {
+            for (TagLength tl : values()) {
+                if (tl.bits == bits) {
+                    return tl;
+                }
+            }
+            return null;
         }
     }
 

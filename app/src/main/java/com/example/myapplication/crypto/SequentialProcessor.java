@@ -1,152 +1,139 @@
 package com.example.myapplication.crypto;
 
-import javax.crypto.AEADBadTagException;
-import javax.crypto.Cipher;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.AlgorithmParameters;
 import java.security.SecureRandom;
+import java.security.Security;
+import java.security.spec.AlgorithmParameterSpec;
 
-public class SequentialProcessor implements CryptoProcessor {
+import javax.crypto.Cipher;
+import javax.crypto.CipherInputStream;
+import javax.crypto.CipherOutputStream;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+public class SequentialProcessor implements IProcessor {
+
+    static {
+        Security.addProvider(new BouncyCastleProvider());
+    }
 
     @Override
-    public void encrypt(String sourcePath, String destPath, char[] password, CryptoOptions options, int chunkSize, int threads, CryptoListener listener) throws Exception {
+    public void encrypt(String sourcePath, String destPath, char[] password, CryptoOptions options, int chunkSize, CryptoListener listener) throws Exception {
         try (FileInputStream fis = new FileInputStream(sourcePath);
              FileOutputStream fos = new FileOutputStream(destPath)) {
 
-            byte[] salt = new byte[16];
-            new SecureRandom().nextBytes(salt);
+            byte[] salt = KeyDerivation.generateSalt();
+            SecretKey key = KeyDerivation.deriveKey(password, salt, options.getKdf(), options.getKeyLength());
 
-            SecretKeySpec key = KeyDerivation.deriveKey(password, salt, options.getKdf(), options.getKeyLength(), options.getProtocol().isXTS());
-
-            // For GCM and CCM, IV should be 12 bytes (96 bits) for performance and security.
-            int ivLength = (options.getMode() == CryptoOptions.CipherMode.GCM || options.getMode() == CryptoOptions.CipherMode.CCM) ? 12 : options.getBlockSizeBits() / 8;
-            byte[] iv = new byte[ivLength];
+            byte[] iv = new byte[options.getBlockSizeBits() / 8];
             new SecureRandom().nextBytes(iv);
 
-            Cipher cipher = Cipher.getInstance(options.getTransformation());
-            cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
+            FileHeader header = new FileHeader(options, iv, salt);
+            header.writeTo(fos);
 
-            FileHeader header = new FileHeader(options, salt, iv);
-            fos.write(header.getHeaderBytes());
+            String transformation = options.getTransformation();
+            Cipher cipher = Cipher.getInstance(transformation, "BC");
+            
+            AlgorithmParameterSpec spec = getAlgorithmParameterSpec(options, iv);
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key.getEncoded(), options.getProtocol().name()), spec);
 
-            // Use the header as Associated Additional Data (AAD) for authenticated ciphers
             if (options.requiresAAD()) {
                 cipher.updateAAD(header.getAADBytes());
             }
+            
+            listener.onStart(fis.getChannel().size());
 
-            long fileLength = new File(sourcePath).length();
-            listener.onStart(fileLength);
-
-            byte[] buffer = new byte[chunkSize];
-            int len;
-            long totalRead = 0;
-            while ((len = fis.read(buffer)) != -1) {
-                byte[] encryptedPart = cipher.update(buffer, 0, len);
-                if (encryptedPart != null) {
-                    fos.write(encryptedPart);
+            try (CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
+                byte[] buffer = new byte[chunkSize];
+                int bytesRead;
+                long totalBytesRead = 0;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    cos.write(buffer, 0, bytesRead);
+                    totalBytesRead += bytesRead;
+                    listener.onProgress(totalBytesRead, fis.getChannel().size());
                 }
-                totalRead += len;
-                listener.onProgress(totalRead, fileLength);
             }
-
-            byte[] finalPart = cipher.doFinal(); // This includes the authentication tag for GCM/CCM
-            fos.write(finalPart);
-
-            listener.onSuccess("Encryption complete.", destPath);
+            listener.onSuccess("Encryption completed successfully.", destPath);
+        } catch (Exception e) {
+            listener.onError("Encryption failed.", e);
+            throw e;
         }
     }
 
     @Override
-    public void decrypt(String sourcePath, String destPath, char[] password, CryptoOptions manualOptions, int chunkSize, int threads, CryptoListener listener) throws Exception {
-        File tempFile = new File(destPath + ".tmp");
+    public void decrypt(String sourcePath, String destPath, char[] password, CryptoOptions manualOptions, int chunkSize, CryptoListener listener) throws Exception {
         try (FileInputStream fis = new FileInputStream(sourcePath);
-             FileOutputStream fos_temp = new FileOutputStream(tempFile)) {
+             FileOutputStream fos = new FileOutputStream(destPath)) {
 
-            FileHeader header = (manualOptions == null) ? FileHeader.fromStream(fis) : null;
-            CryptoOptions options = (manualOptions == null) ? header.getOptions() : manualOptions;
+            FileHeader header = FileHeader.fromStream(fis);
+            CryptoOptions options = header.getOptions();
+
+            // Override with manual options if provided
+            if (manualOptions != null) {
+                options = manualOptions;
+            }
+
+            SecretKey key = KeyDerivation.deriveKey(password, header.getSalt(), options.getKdf(), options.getKeyLength());
+            byte[] iv = header.getIv();
+
+            String transformation = options.getTransformation();
+            Cipher cipher = Cipher.getInstance(transformation, "BC");
             
-            // For decryption, IV must be read from the header
-            byte[] iv;
-            byte[] salt;
+            AlgorithmParameterSpec spec = getAlgorithmParameterSpec(options, iv);
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key.getEncoded(), options.getProtocol().name()), spec);
 
-            if (header != null) {
-                iv = header.getIv();
-                salt = header.getSalt();
-            } else {
-                // Manual mode is tricky for GCM as we don't know the IV. 
-                // This implementation assumes a non-GCM cipher or that IV is handled elsewhere.
-                // A truly robust manual GCM would need the IV passed in.
-                int ivLength = (options.getMode() == CryptoOptions.CipherMode.GCM || options.getMode() == CryptoOptions.CipherMode.CCM) ? 12 : options.getBlockSizeBits() / 8;
-                iv = new byte[ivLength];
-                salt = new byte[16]; // Dummy salt for manual mode
+            if (options.requiresAAD()) {
+                cipher.updateAAD(header.getAADBytes());
             }
 
-            SecretKeySpec key = KeyDerivation.deriveKey(password, salt, options.getKdf(), options.getKeyLength(), options.getProtocol().isXTS());
-
-            Cipher cipher = Cipher.getInstance(options.getTransformation());
-            cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
-
-            if (header != null && options.requiresAAD()) {
-                 cipher.updateAAD(header.getAADBytes());
-            }
-
-            long fileLength = new File(sourcePath).length();
-            long headerSize = (header != null) ? header.getHeaderSize() : 0;
-            long contentLength = fileLength - headerSize;
-            listener.onStart(contentLength);
-
-            byte[] buffer = new byte[chunkSize];
-            int len;
-            long totalRead = 0;
-
-            while ((len = fis.read(buffer)) != -1) {
-                // Handle the last chunk carefully for authenticated ciphers
-                int bytesToProcess = len;
-                long remaining = contentLength - totalRead;
-                if (bytesToProcess > remaining) { // Should not happen with correct content length
-                    bytesToProcess = (int) remaining;
-                }
-
-                byte[] decryptedPart = cipher.update(buffer, 0, bytesToProcess);
-                if (decryptedPart != null) {
-                    fos_temp.write(decryptedPart);
-                }
-                totalRead += bytesToProcess;
-                if(totalRead >= contentLength) break; // Exit loop if all content is read
-            }
-            listener.onProgress(totalRead, contentLength);
+            long fileLength = new java.io.File(sourcePath).length();
+            long headerSize = header.getHeaderSize();
+            long ciphertextLength = fileLength - headerSize;
             
-            try {
-                byte[] finalPart = cipher.doFinal(); // Verifies the tag. Throws AEADBadTagException on failure.
-                if (finalPart != null) {
-                    fos_temp.write(finalPart);
+            listener.onStart(ciphertextLength);
+
+            try (CipherInputStream cis = new CipherInputStream(fis, cipher)) {
+                byte[] buffer = new byte[chunkSize];
+                int bytesRead;
+                long totalBytesRead = 0;
+                while ((bytesRead = cis.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                    totalBytesRead += bytesRead;
+                    listener.onProgress(totalBytesRead, ciphertextLength);
                 }
-            } catch (AEADBadTagException e) {
-                fos_temp.close();
-                tempFile.delete();
-                throw new IOException("Decryption failed: Authentication tag mismatch! The file may be corrupt or the password is wrong.", e);
-            } 
-
-            fos_temp.close();
-
-            File finalFile = new File(destPath);
-            if (finalFile.exists()) {
-                finalFile.delete();
             }
-            if (!tempFile.renameTo(finalFile)) {
-                throw new IOException("Failed to rename temporary file to final destination.");
-            }
-            listener.onSuccess("Decryption complete.", destPath);
-
+            listener.onSuccess("Decryption completed successfully.", destPath);
         } catch (Exception e) {
-            if (tempFile.exists()) {
-                tempFile.delete();
-            }
+            listener.onError("Decryption failed.", e);
             throw e;
         }
+    }
+    
+    private AlgorithmParameterSpec getAlgorithmParameterSpec(CryptoOptions options, byte[] iv) {
+        CryptoOptions.CipherMode mode = options.getMode();
+
+        if (mode.isAeadMode()) {
+            // GCM and CCM require a specific tag length. 128 bits (16 bytes) is standard.
+            // OCB would need a different spec, but we'll focus on GCM/CCM for now.
+            if (mode == CryptoOptions.CipherMode.GCM || mode == CryptoOptions.CipherMode.CCM) {
+                 return new GCMParameterSpec(128, iv);
+            }
+        }
+        
+        // Modes like ECB don't use an IV.
+        if (mode == CryptoOptions.CipherMode.ECB || mode == CryptoOptions.CipherMode.WRAP) {
+            return null;
+        }
+
+        // Default for CBC, CTR, OFB, CFB, etc.
+        return new IvParameterSpec(iv);
     }
 }

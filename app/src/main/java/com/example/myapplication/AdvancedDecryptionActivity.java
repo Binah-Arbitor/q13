@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -23,8 +24,12 @@ import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
 import com.example.myapplication.crypto.FileHeader;
 
+import java.io.File;
 import java.io.FileInputStream;
-import java.util.Arrays;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.UUID;
 
 public class AdvancedDecryptionActivity extends AppCompatActivity implements CryptoListener {
 
@@ -167,8 +172,14 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             }
 
             try {
-                String inputPath = getPathFromUri(selectedFileUri);
-                String outputPath = inputPath.replace(".enc", ".dec");
+                String inputPath = copyUriToCache(selectedFileUri);
+                 if (inputPath == null) {
+                    onError("File processing failed.", new Exception("Could not copy file to cache."));
+                    return;
+                }
+                
+                String originalFileName = getFileName(selectedFileUri).replace(".enc", ".dec");
+                String outputPath = getCacheDir().getAbsolutePath() + File.separator + originalFileName;
 
                 CryptoOptions manualOptions = null;
                 if (manualSettingsCheckbox.isChecked()) {
@@ -200,7 +211,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             selectedFileUri = data.getData();
             String fileName = getFileName(selectedFileUri);
             selectedFileTextView.setText("Selected: " + fileName);
-            logToConsole("File selected: " + getPathFromUri(selectedFileUri));
+            logToConsole("File URI: " + selectedFileUri.toString());
 
             if (!manualSettingsCheckbox.isChecked()) {
                 readHeaderAndAutoPopulate();
@@ -210,7 +221,13 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
 
     private void readHeaderAndAutoPopulate() {
         if (selectedFileUri == null) return;
-        try (FileInputStream fis = new FileInputStream(getPathFromUri(selectedFileUri))) {
+        String path = copyUriToCache(selectedFileUri);
+        if (path == null) {
+            logToConsole("Could not read file header: Unable to copy file to cache.");
+            return;
+        }
+        
+        try (FileInputStream fis = new FileInputStream(path)) {
             FileHeader header = FileHeader.fromStream(fis);
             CryptoOptions options = header.getOptions();
 
@@ -270,7 +287,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
             statusTextView.setText("✓ SUCCESS");
             statusTextView.setVisibility(View.VISIBLE);
             logToConsole(message);
-            logToConsole("Output file: " + outputPath);
+            logToConsole("Output file saved in app cache: " + outputPath);
         });
     }
 
@@ -313,11 +330,33 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
                 result = result.substring(cut + 1);
             }
         }
-        return result;
+        return result != null ? result : UUID.randomUUID().toString();
+    }
+
+    private String copyUriToCache(Uri uri) {
+         if (uri == null) return null;
+        ContentResolver contentResolver = getContentResolver();
+        String fileName = getFileName(uri);
+        File tempFile = new File(getCacheDir(), fileName);
+
+        try (InputStream in = contentResolver.openInputStream(uri);
+             OutputStream out = new FileOutputStream(tempFile)) {
+            if (in == null) return null;
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+            return tempFile.getAbsolutePath();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private String getPathFromUri(Uri uri) {
-        return uri.getPath();
+        // This method is now DEPRECATED and should not be used.
+        return null;
     }
     
     private int getChunkSizeInBytes(int progress) {

@@ -1,5 +1,6 @@
 package com.example.myapplication;
 
+import android.content.ContentResolver;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -22,8 +23,12 @@ import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Arrays;
-import java.util.stream.Collectors;
+import java.util.UUID;
 
 public class AdvancedEncryptionActivity extends AppCompatActivity implements CryptoListener {
 
@@ -194,8 +199,16 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             }
 
             try {
-                String inputPath = getPathFromUri(selectedFileUri);
-                String outputPath = inputPath + ".enc"; // Simple output path
+                // Use the new, safe method to get a usable file path
+                String inputPath = copyUriToCache(selectedFileUri);
+                if (inputPath == null) {
+                    onError("File processing failed.", new Exception("Could not copy file to cache."));
+                    return;
+                }
+                
+                // Adjust output path to be in the cache directory as well
+                String originalFileName = getFileName(selectedFileUri);
+                String outputPath = getCacheDir().getAbsolutePath() + File.separator + originalFileName + ".enc";
 
                 CryptoOptions options = new CryptoOptions(
                         (CryptoOptions.CryptoProtocol) protocolSpinner.getSelectedItem(),
@@ -225,7 +238,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             selectedFileUri = data.getData();
             String fileName = getFileName(selectedFileUri);
             selectedFileTextView.setText("Selected: " + fileName);
-            logToConsole("File selected: " + getPathFromUri(selectedFileUri));
+            logToConsole("File URI: " + selectedFileUri.toString());
         }
     }
 
@@ -257,7 +270,7 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
             statusTextView.setText("✓ SUCCESS");
             statusTextView.setVisibility(View.VISIBLE);
             logToConsole(message);
-            logToConsole("Output file: " + outputPath);
+            logToConsole("Output file saved in app cache: " + outputPath);
         });
     }
 
@@ -300,12 +313,34 @@ public class AdvancedEncryptionActivity extends AppCompatActivity implements Cry
                 result = result.substring(cut + 1);
             }
         }
-        return result;
+        return result != null ? result : UUID.randomUUID().toString();
+    }
+    
+    private String copyUriToCache(Uri uri) {
+        if (uri == null) return null;
+        ContentResolver contentResolver = getContentResolver();
+        String fileName = getFileName(uri);
+        File tempFile = new File(getCacheDir(), fileName);
+
+        try (InputStream in = contentResolver.openInputStream(uri);
+             OutputStream out = new FileOutputStream(tempFile)) {
+            if (in == null) return null;
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = in.read(buffer)) != -1) {
+                out.write(buffer, 0, len);
+            }
+            return tempFile.getAbsolutePath();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private String getPathFromUri(Uri uri) {
-        // This is a simplified method. A robust implementation would handle different URI schemes.
-        return uri.getPath(); // Be aware this might not be a direct file path
+        // This method is now DEPRECATED and should not be used.
+        // The copyUriToCache method should be used instead.
+        return null; 
     }
 
     private int getChunkSizeInBytes(int progress) {

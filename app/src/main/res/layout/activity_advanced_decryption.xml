@@ -6,17 +6,10 @@
     android:layout_height="match_parent"
     tools:context=".AdvancedDecryptionActivity">
 
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottom_nav"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_alignParentBottom="true"
-        app:menu="@menu/advanced_bottom_nav_menu" />
-
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_above="@id/bottom_nav">
+        android:layout_above="@+id/bottom_nav">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -24,70 +17,37 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- File Input -->
-            <TextView
-                style="?android:attr/textAppearanceMedium"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="File and Password"
-                android:textStyle="bold" />
-
+            <!-- File Selection -->
             <Button
                 android:id="@+id/file_select_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Select Encrypted File" />
+                android:text="Select .enc File" />
 
             <TextView
                 android:id="@+id/selected_file_textview"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="No file selected" />
+                android:text="No file selected"
+                android:padding="8dp"/>
 
             <EditText
                 android:id="@+id/password_input"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Password"
-                android:inputType="textPassword" />
+                android:inputType="textPassword"
+                android:hint="Password" />
 
-            <!-- Header Info Display -->
-            <LinearLayout
-                android:id="@+id/header_info_layout"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:orientation="vertical"
-                android:visibility="gone"
-                tools:visibility="visible">
-
-                <TextView
-                    style="?android:attr/textAppearanceMedium"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Encryption Parameters (from file)"
-                    android:textStyle="bold" />
-
-                <TextView android:id="@+id/info_protocol" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Protocol: AES" />
-                <TextView android:id="@+id/info_key_length" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Key Length: 256-bit" />
-                <TextView android:id="@+id/info_block_size" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Block Size: 128-bit" />
-                <TextView android:id="@+id/info_mode" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Mode: GCM" />
-                <TextView android:id="@+id/info_padding" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="Padding: NoPadding" />
-                <TextView android:id="@+id/info_kdf" android:layout_width="wrap_content" android:layout_height="wrap_content" tools:text="KDF: PBKDF2WithHmacSHA256" />
-            </LinearLayout>
-
-            <!-- Manual Mode Toggle -->
+            <!-- Manual Settings Checkbox -->
             <CheckBox
-                android:id="@+id/manual_mode_checkbox"
+                android:id="@+id/manual_settings_checkbox"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="Manual Decryption Mode" />
+                android:text="Override settings manually" />
 
-            <!-- Manual Cipher Settings (Initially hidden) -->
+            <!-- Manual Settings Layout -->
             <LinearLayout
-                android:id="@+id/manual_options_layout"
+                android:id="@+id/manual_settings_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
@@ -97,8 +57,15 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Protocol"
-                    android:layout_marginTop="8dp"/>
+                    android:text="Cipher Settings (Manual)"
+                    android:textAppearance="?android:attr/textAppearanceMedium"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Protocol" />
                 <Spinner
                     android:id="@+id/protocol_spinner"
                     android:layout_width="match_parent"
@@ -108,18 +75,17 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Key Length"/>
+                    android:text="Key Length" />
                 <Spinner
                     android:id="@+id/key_length_spinner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
 
                 <TextView
-                    android:id="@+id/block_size_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Block Size (bits)"/>
+                    android:text="Block Size (bits)" />
                 <Spinner
                     android:id="@+id/block_size_spinner"
                     android:layout_width="match_parent"
@@ -129,17 +95,33 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Mode"/>
+                    android:text="Mode" />
                 <Spinner
                     android:id="@+id/mode_spinner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
+                
+                <LinearLayout
+                    android:id="@+id/tag_length_layout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="Authentication Tag Length" />
+                    <Spinner
+                        android:id="@+id/tag_length_spinner"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content" />
+                </LinearLayout>
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Padding"/>
+                    android:text="Padding" />
                 <Spinner
                     android:id="@+id/padding_spinner"
                     android:layout_width="match_parent"
@@ -148,29 +130,42 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="Key Derivation (Manual)"
+                    android:textAppearance="?android:attr/textAppearanceMedium"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Key Derivation Function (KDF)"/>
+                    android:text="Key Derivation Function (KDF)" />
                 <Spinner
                     android:id="@+id/kdf_spinner"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content" />
-
             </LinearLayout>
+            
+             <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"/>
 
             <!-- Performance Settings -->
             <TextView
-                style="?android:attr/textAppearanceMedium"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
                 android:text="Performance"
+                android:textAppearance="?android:attr/textAppearanceMedium"
                 android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -189,35 +184,11 @@
                 android:max="12"
                 android:progress="0" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Threads: " />
-                <TextView
-                    android:id="@+id/thread_count_value_textview"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="1" />
-            </LinearLayout>
 
-            <SeekBar
-                android:id="@+id/thread_count_slider"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:max="15"
-                android:progress="0" />
-
-            <!-- Actions -->
             <Button
                 android:id="@+id/decrypt_button"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
                 android:text="Decrypt" />
 
             <!-- Status and Console -->
@@ -256,11 +227,18 @@
                     android:id="@+id/console_textview"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:padding="8dp" />
+                    android:padding="8dp"
+                    android:fontFamily="monospace"/>
             </ScrollView>
 
         </LinearLayout>
     </ScrollView>
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/bottom_nav"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        app:menu="@menu/advanced_bottom_nav_menu" />
 
 </RelativeLayout>

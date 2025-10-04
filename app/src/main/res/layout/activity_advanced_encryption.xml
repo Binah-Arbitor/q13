@@ -154,7 +154,6 @@
                 android:progress="0" />
 
             <LinearLayout
-                android:id="@+id/thread_count_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -250,7 +249,7 @@
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
-        android.layout_height="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         app:menu="@menu/advanced_bottom_nav_menu" />
 

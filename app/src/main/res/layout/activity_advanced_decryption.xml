@@ -189,7 +189,6 @@
 
             <!-- Status and Console -->
             <FrameLayout
-                android:id="@+id/status_layout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp">
@@ -213,7 +212,6 @@
             </FrameLayout>
 
             <ScrollView
-                android:id="@+id/console_scrollview"
                 android:layout_width="match_parent"
                 android:layout_height="150dp"
                 android:layout_marginTop="8dp"

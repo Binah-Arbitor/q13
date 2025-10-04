@@ -58,7 +58,7 @@ public abstract class BaseActivity extends AppCompatActivity {
                     if (Environment.isExternalStorageManager()) {
                         if (afterPermissionGranted != null) afterPermissionGranted.run();
                     } else {
-                        Toast.makeText(this, "'All files access' permission is required for full functionality.", Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, "\'All files access\' permission is required for full functionality.", Toast.LENGTH_LONG).show();
                     }
                     afterPermissionGranted = null;
                 }
@@ -96,7 +96,7 @@ public abstract class BaseActivity extends AppCompatActivity {
             try {
                 Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
                 intent.setData(Uri.parse("package:" + getApplicationContext().getPackageName()));
-                Toast.makeText(this, "Please enable 'All files access' to proceed.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Please enable \'All files access\' to proceed.", Toast.LENGTH_LONG).show();
                 manageStorageLauncher.launch(intent);
             } catch (Exception e) {
                 // Fallback for devices that might not have this screen
@@ -140,10 +140,6 @@ public abstract class BaseActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == R.id.action_settings) {
-            startActivity(new Intent(this, SettingsActivity.class));
-            return true;
-        }
         return super.onOptionsItemSelected(item);
     }
 

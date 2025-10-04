@@ -51,12 +51,13 @@ public class CryptoOptions {
 
     @Override
     public String toString() {
-        String format = (tagLength != null && mode.isAeadMode()) 
-            ? "%s-%d/%s/%s (Tag: %d, KDF: %s)" 
-            : "%s-%d/%s/%s (KDF: %s)";
-        return String.format(format, protocol, keyLength.getBits(), mode, padding, 
-            (tagLength != null && mode.isAeadMode()) ? tagLength.getBits() : kdf, 
-            kdf);
+        String format;
+        if (tagLength != null && mode.isAeadMode()) {
+            format = String.format("%s-%d/%s/%s (Tag: %d, KDF: %s)", protocol, keyLength.getBits(), mode, padding, tagLength.getBits(), kdf);
+        } else {
+            format = String.format("%s-%d/%s/%s (KDF: %s)", protocol, keyLength.getBits(), mode, padding, kdf);
+        }
+        return format;
     }
 
     // Enums ...
@@ -175,6 +176,12 @@ public class CryptoOptions {
         
         public boolean isAeadMode() {
             return this == GCM || this == CCM || this == OCB || this == EAX;
+        }
+
+        public boolean isParallelizable() {
+            // Modes that allow random access (seeking) to any block
+            // without depending on previous blocks.
+            return this == CTR || this == GCM || this == CCM || this == OCB || this == EAX || this == XTS;
         }
     }
     

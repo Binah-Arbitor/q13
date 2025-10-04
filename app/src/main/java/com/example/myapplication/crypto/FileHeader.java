@@ -6,6 +6,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.util.Arrays;
 
 public class FileHeader {
@@ -51,6 +52,10 @@ public class FileHeader {
 
     public void writeTo(OutputStream stream) throws IOException {
         stream.write(getHeaderBytes());
+    }
+
+    public void writeTo(RandomAccessFile file) throws IOException {
+        file.write(getHeaderBytes());
     }
 
     public byte[] getHeaderBytes() throws IOException {

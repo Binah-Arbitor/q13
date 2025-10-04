@@ -9,7 +9,7 @@
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_above="@+id/bottom_nav">
+        android:layout_above="@+id/bottom_navigation">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -229,10 +229,10 @@
     </ScrollView>
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottom_nav"
+        android:id="@+id/bottom_navigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        app:menu="@menu/advanced_bottom_nav_menu" />
+        app:menu="@menu/advanced_navigation_menu" />
 
 </RelativeLayout>

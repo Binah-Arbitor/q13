@@ -8,4 +8,8 @@
         android:id="@+id/nav_decrypt"
         android:icon="@drawable/ic_lock_open_outline"
         android:title="Decrypt" />
+    <item
+        android:id="@+id/nav_simple_mode"
+        android:icon="@drawable/ic_swap_horiz"
+        android:title="Simple Mode" />
 </menu>

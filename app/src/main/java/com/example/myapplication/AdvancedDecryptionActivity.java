@@ -6,6 +6,8 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -17,19 +19,20 @@ import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.myapplication.crypto.CryptoListener;
 import com.example.myapplication.crypto.CryptoManager;
 import com.example.myapplication.crypto.CryptoOptions;
 import com.example.myapplication.crypto.FileHeader;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.Arrays;
 import java.util.UUID;
 
 public class AdvancedDecryptionActivity extends AppCompatActivity implements CryptoListener {
@@ -44,6 +47,7 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     private EditText passwordInput;
     private CheckBox manualSettingsCheckbox;
     private SeekBar chunkSizeSlider;
+    private BottomNavigationView bottomNav;
 
     private CryptoManager cryptoManager;
     private View manualSettingsLayout;
@@ -76,21 +80,52 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
         passwordInput = findViewById(R.id.password_input);
         manualSettingsCheckbox = findViewById(R.id.manual_settings_checkbox);
         chunkSizeSlider = findViewById(R.id.chunk_size_slider);
+        bottomNav = findViewById(R.id.bottom_navigation);
 
         setupSpinners();
         setupSliders();
         setupButtonListeners();
         setupCheckboxListener();
+        setupBottomNavigation();
 
         manualSettingsLayout.setVisibility(View.GONE);
     }
-    
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == R.id.action_switch_to_simple) {
+            startActivity(new Intent(this, MainActivity.class));
+            finish();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void setupBottomNavigation() {
+        bottomNav.setSelectedItemId(R.id.nav_decrypt);
+        bottomNav.setOnItemSelectedListener(item -> {
+            if (item.getItemId() == R.id.nav_encrypt) {
+                startActivity(new Intent(this, AdvancedEncryptionActivity.class));
+                finish(); // Finish current activity to prevent stack buildup
+                return true;
+            }
+            return false;
+        });
+    }
+
     private void setUiEnabled(boolean enabled) {
         manualSettingsCheckbox.setEnabled(enabled);
         fileSelectButton.setEnabled(enabled);
         decryptButton.setEnabled(enabled);
         passwordInput.setEnabled(enabled);
         chunkSizeSlider.setEnabled(enabled);
+        bottomNav.setEnabled(enabled);
 
         // Only enable manual spinners if the checkbox is checked
         boolean manualEnabled = enabled && manualSettingsCheckbox.isChecked();
@@ -275,14 +310,15 @@ public class AdvancedDecryptionActivity extends AppCompatActivity implements Cry
     }
 
     private <T> void autoSetSpinner(Spinner spinner, T value) {
+        if (value == null) return;
         ArrayAdapter<T> adapter = (ArrayAdapter<T>) spinner.getAdapter();
+        if (adapter == null) return;
         for (int i = 0; i < adapter.getCount(); i++) {
-            if (adapter.getItem(i).equals(value)) {
+            if (value.equals(adapter.getItem(i))) {
                 spinner.setSelection(i);
                 return;
             }
         }
-        // If value not found, it might be an unsupported value in the current config
         logToConsole("Warning: Could not auto-set spinner for value: " + value);
     }
 
